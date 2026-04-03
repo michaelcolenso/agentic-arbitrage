@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import List, Optional, Dict, Any
 from contextlib import contextmanager
 
+from config.settings import config
 from core.models import (
     Opportunity, Site, SiteMetrics, FactoryStats,
     OpportunityStatus, SiteStatus, PainPoint, DataSource,
@@ -20,7 +21,7 @@ class Storage:
     
     def __init__(self, db_path: str = None):
         if db_path is None:
-            db_path = "/mnt/okcomputer/output/agentic_arbitrage_factory/data/factory.db"
+            db_path = config.data_dir / "factory.db"
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
