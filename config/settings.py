@@ -6,6 +6,18 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Any
 from pathlib import Path
 
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+def get_default_data_dir() -> Path:
+    """Return the default writable data directory for the factory."""
+    override = os.getenv("FACTORY_DATA_DIR")
+    if override:
+        return Path(override).expanduser()
+    return PROJECT_ROOT / "data"
+
+
 @dataclass
 class DiscoveryConfig:
     """Configuration for The Red Queen (Discovery Agent)"""
@@ -71,7 +83,7 @@ class MonetizationConfig:
 class FactoryConfig:
     """Main factory configuration"""
     project_name: str = "AgenticArbitrageFactory"
-    data_dir: Path = field(default_factory=lambda: Path("/mnt/okcomputer/output/agentic_arbitrage_factory/data"))
+    data_dir: Path = field(default_factory=get_default_data_dir)
     log_level: str = "INFO"
     max_concurrent_sites: int = 50
     discovery_interval_hours: int = 24
