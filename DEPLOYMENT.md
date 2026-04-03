@@ -49,29 +49,21 @@ The factory can be deployed in multiple configurations:
 git clone <repository-url>
 cd agentic_arbitrage_factory
 
-# Create virtual environment
-python -m venv venv
-
-# Activate virtual environment
-source venv/bin/activate  # Linux/Mac
-# OR
-venv\Scripts\activate  # Windows
-
-# Install dependencies
-pip install -r requirements.txt
+# Install runtime and development dependencies
+uv sync --extra dev
 
 # Create data directory
 mkdir -p data
 
 # Run factory
-python factory.py run
+uv run python factory.py run
 ```
 
 ### Directory Structure
 
 ```
 agentic_arbitrage_factory/
-├── venv/                    # Virtual environment
+├── .venv/                   # uv-managed virtual environment
 ├── data/                    # Database and logs
 │   ├── factory.db          # SQLite database
 │   └── factory.log         # Log files
@@ -83,17 +75,17 @@ agentic_arbitrage_factory/
 
 **One-time run:**
 ```bash
-python factory.py run
+uv run python factory.py run
 ```
 
 **Continuous mode:**
 ```bash
-python factory.py continuous
+uv run python factory.py continuous
 ```
 
 **With nohup (background):**
 ```bash
-nohup python factory.py continuous > factory.log 2>&1 &
+nohup uv run python factory.py continuous > factory.log 2>&1 &
 ```
 
 ---
@@ -119,8 +111,8 @@ ssh user@your-server-ip
 # Update system
 sudo apt update && sudo apt upgrade -y
 
-# Install Python
-sudo apt install python3 python3-pip python3-venv git -y
+# Install Python and curl for uv
+sudo apt install python3 python3-pip curl git -y
 
 # Create app directory
 sudo mkdir -p /opt/agentic_factory
@@ -130,12 +122,11 @@ sudo chown $USER:$USER /opt/agentic_factory
 cd /opt/agentic_factory
 git clone <repository-url> .
 
-# Create virtual environment
-python3 -m venv venv
-source venv/bin/activate
+# Install uv
+curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Install dependencies
-pip install -r requirements.txt
+uv sync --extra dev
 
 # Create data directory
 mkdir -p data
@@ -175,8 +166,8 @@ After=network.target
 Type=simple
 User=$USER
 WorkingDirectory=/opt/agentic_factory
-Environment=PATH=/opt/agentic_factory/venv/bin
-ExecStart=/opt/agentic_factory/venv/bin/python factory.py continuous
+Environment=PATH=/opt/agentic_factory/.venv/bin
+ExecStart=/opt/agentic_factory/.venv/bin/python factory.py continuous
 Restart=always
 RestartSec=10
 
@@ -248,11 +239,11 @@ RUN apt-get update && apt-get install -y \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements
-COPY requirements.txt .
+# Copy uv project files
+COPY pyproject.toml uv.lock ./
 
 # Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+RUN uv sync --frozen --no-dev
 
 # Copy application
 COPY . .
@@ -428,7 +419,7 @@ GITHUB_TOKEN=ghp_your_token
 
 ```bash
 # Check factory status
-python factory.py status
+uv run python factory.py status
 
 # Check database
 sqlite3 data/factory.db "SELECT COUNT(*) FROM opportunities;"

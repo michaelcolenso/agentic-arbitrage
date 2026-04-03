@@ -4,7 +4,7 @@
 
 An autonomous system that identifies, validates, builds, deploys, and manages programmatic SEO sites without human intervention.
 
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Async](https://img.shields.io/badge/async-aiohttp-green.svg)](https://docs.aiohttp.org/)
 
@@ -75,12 +75,8 @@ The factory consists of four autonomous agents working in harmony:
 git clone <repository-url>
 cd agentic_arbitrage_factory
 
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
+# Install runtime and development dependencies
+uv sync --extra dev
 ```
 
 ### Configuration
@@ -105,25 +101,25 @@ GITHUB_TOKEN=your_github_token
 
 ```bash
 # Run complete factory cycle
-python factory.py run
+uv run python factory.py run
 
 # Run specific phases
-python factory.py discover      # Only discovery
-python factory.py validate      # Only validation
-python factory.py build         # Only build
-python factory.py cull          # Only portfolio management
+uv run python factory.py discover      # Only discovery
+uv run python factory.py validate      # Only validation
+uv run python factory.py build         # Only build
+uv run python factory.py cull          # Only portfolio management
 
 # Run continuously (recommended for production)
-python factory.py continuous
+uv run python factory.py continuous
 
 # Check factory status
-python factory.py status
+uv run python factory.py status
 
 # Run demo
-python demo.py
+uv run python demo.py
 
 # View dashboard
-python dashboard.py
+uv run python dashboard.py
 ```
 
 ## 📊 Example Output
@@ -199,7 +195,8 @@ agentic_arbitrage_factory/
 ├── factory.py                 # Main orchestrator
 ├── dashboard.py               # Monitoring dashboard
 ├── demo.py                    # Quick demo
-├── requirements.txt           # Dependencies
+├── pyproject.toml             # uv project definition
+├── uv.lock                    # Locked dependency graph
 └── README.md                  # This file
 ```
 
@@ -228,14 +225,14 @@ evaluation_days: int = 90                 # Days before culling
 
 ```bash
 # Run tests
-pytest tests/
+uv run pytest tests/
 
 # Run with coverage
-pytest --cov=.
+uv run pytest --cov=.
 
 # Run specific agent tests
-pytest tests/test_red_queen.py
-pytest tests/test_midwife.py
+uv run pytest tests/test_red_queen.py
+uv run pytest tests/test_midwife.py
 ```
 
 ## 📈 Risk Profiles

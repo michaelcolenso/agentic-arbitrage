@@ -4,85 +4,71 @@
 # =============================================================================
 # Stage 1: Builder
 # =============================================================================
-FROM python:3.11-slim as builder
+FROM python:3.11-slim AS builder
 
-# Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    APP_HOME=/app \
+    UV_LINK_MODE=copy
 
-# Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
     gcc \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Create virtual environment
-RUN python -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
+COPY --from=ghcr.io/astral-sh/uv:0.5.1 /uv /uvx /bin/
 
-# Install Python dependencies
-COPY requirements.txt .
-RUN pip install --upgrade pip && \
-    pip install -r requirements.txt
+WORKDIR $APP_HOME
+
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev
+
+COPY . .
+RUN uv sync --frozen --no-dev
 
 # =============================================================================
 # Stage 2: Production
 # =============================================================================
-FROM python:3.11-slim as production
+FROM python:3.11-slim AS production
 
-# Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONFAULTHANDLER=1 \
-    PATH="/opt/venv/bin:$PATH" \
-    APP_HOME=/app
+    APP_HOME=/app \
+    PATH="/app/.venv/bin:$PATH"
 
-# Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpq5 \
     curl \
+    libpq5 \
     && rm -rf /var/lib/apt/lists/*
 
-# Create app user
 RUN groupadd -r factory && useradd -r -g factory factory
 
-# Set working directory
 WORKDIR $APP_HOME
 
-# Copy virtual environment from builder
-COPY --from=builder /opt/venv /opt/venv
+COPY --from=ghcr.io/astral-sh/uv:0.5.1 /uv /uvx /bin/
+COPY --from=builder /app /app
 
-# Copy application code
-COPY --chown=factory:factory . .
+RUN mkdir -p data sites archive && chown -R factory:factory $APP_HOME
 
-# Create data directories
-RUN mkdir -p data sites archive && \
-    chown -R factory:factory $APP_HOME
-
-# Switch to non-root user
 USER factory
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import sys; sys.exit(0)" || exit 1
+    CMD uv run python -c "import sys; sys.exit(0)" || exit 1
 
-# Default command
-CMD ["python", "factory.py", "continuous"]
+CMD ["uv", "run", "python", "factory.py", "continuous"]
 
 # =============================================================================
 # Stage 3: Development
 # =============================================================================
-FROM production as development
+FROM production AS development
 
 USER root
 
-# Install development dependencies
-COPY requirements-dev.txt .
-RUN pip install -r requirements-dev.txt
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --extra dev
 
-# Install additional tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     vim \
@@ -90,5 +76,4 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 USER factory
 
-# Default command for development
-CMD ["python", "factory.py", "run"]
+CMD ["uv", "run", "python", "factory.py", "run"]

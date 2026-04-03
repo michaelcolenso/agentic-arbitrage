@@ -53,35 +53,21 @@ cd agentic_arbitrage_factory
 git remote add upstream https://github.com/ORIGINAL_OWNER/agentic_arbitrage_factory.git
 ```
 
-### Virtual Environment
+### Development Environment
 
 ```bash
-# Create virtual environment
-python -m venv venv
-
-# Activate
-source venv/bin/activate  # Linux/Mac
-# OR
-venv\Scripts\activate  # Windows
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Install dev dependencies
-pip install -r requirements-dev.txt
+# Install runtime and development dependencies
+uv sync --extra dev
 ```
 
 ### Pre-commit Hooks
 
 ```bash
-# Install pre-commit
-pip install pre-commit
-
 # Install hooks
-pre-commit install
+uv run pre-commit install
 
 # Run manually
-pre-commit run --all-files
+uv run pre-commit run --all-files
 ```
 
 ---
@@ -198,22 +184,22 @@ tests/
 
 ```bash
 # Run all tests
-pytest
+uv run pytest
 
 # Run with coverage
-pytest --cov=. --cov-report=html
+uv run pytest --cov=. --cov-report=html
 
 # Run specific test file
-pytest tests/test_red_queen.py
+uv run pytest tests/test_red_queen.py
 
 # Run specific test
-pytest tests/test_red_queen.py::test_discover_opportunities
+uv run pytest tests/test_red_queen.py::test_discover_opportunities
 
 # Run with verbose output
-pytest -v
+uv run pytest -v
 
 # Run failed tests only
-pytest --lf
+uv run pytest --lf
 ```
 
 ### Writing Tests
@@ -554,14 +540,13 @@ logger.debug(f"Variable value: {variable}")
 
 ```bash
 # Time execution
-python -m cProfile -o profile.stats factory.py run
+uv run python -m cProfile -o profile.stats factory.py run
 
 # View profile
-python -m pstats profile.stats
+uv run python -m pstats profile.stats
 
 # Memory profiling
-pip install memory_profiler
-python -m memory_profiler factory.py
+uv run python -m memory_profiler factory.py
 ```
 
 ### Database Inspection
