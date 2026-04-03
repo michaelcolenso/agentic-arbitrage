@@ -410,7 +410,7 @@ class Constructor:
     async def _create_project_files(self, site, opportunity, schema, adapters, templates):
         print("  Creating project files...")
         
-        base_path = Path("/mnt/okcomputer/output/agentic_arbitrage_factory/sites/" + site.id)
+        base_path = config.sites_dir / site.id
         base_path.mkdir(parents=True, exist_ok=True)
         
         dirs = ["src", "src/app", "src/components", "src/lib", "src/adapters", "migrations"]

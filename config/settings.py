@@ -120,5 +120,17 @@ class FactoryConfig:
     def github_token(self) -> str:
         return os.getenv("GITHUB_TOKEN", "")
 
+    @property
+    def output_dir(self) -> Path:
+        return self.data_dir.parent
+
+    @property
+    def sites_dir(self) -> Path:
+        return self.output_dir / "sites"
+
+    @property
+    def archive_dir(self) -> Path:
+        return self.output_dir / "archive"
+
 # Global config instance
 config = FactoryConfig()

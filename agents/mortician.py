@@ -208,7 +208,7 @@ class SiteArchiver:
     
     def __init__(self):
         self.storage = Storage()
-        self.archive_base_path = "/mnt/okcomputer/output/agentic_arbitrage_factory/archive"
+        self.archive_base_path = str(config.archive_dir)
     
     async def archive(self, site: Site, decision: CullDecision) -> ArchiveResult:
         """Archive a culled site"""
@@ -251,7 +251,7 @@ class SiteArchiver:
         
         # Archive 2: Code (if exists)
         code_path = None
-        site_code_path = f"/mnt/okcomputer/output/agentic_arbitrage_factory/sites/{site.id}"
+        site_code_path = str(config.sites_dir / site.id)
         if Path(site_code_path).exists():
             import shutil
             archive_code_path = f"{self.archive_base_path}/{site.id}_code"
