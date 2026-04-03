@@ -24,31 +24,30 @@ help:
 
 # Installation
 install:
-	pip install -r requirements.txt
+	uv sync
 
 install-dev:
-	pip install -r requirements.txt
-	pip install -r requirements-dev.txt
+	uv sync --extra dev
 
 # Testing
 test:
-	pytest tests/ -v
+	uv run pytest tests/ -v
 
 test-coverage:
-	pytest tests/ --cov=. --cov-report=html --cov-report=term
+	uv run pytest tests/ --cov=. --cov-report=html --cov-report=term
 
 # Code quality
 lint:
-	flake8 agents/ core/ config/ --max-line-length=100
-	mypy agents/ core/ config/ --ignore-missing-imports
+	uv run flake8 agents/ core/ config/ --max-line-length=100
+	uv run mypy agents/ core/ config/ --ignore-missing-imports
 
 format:
-	black agents/ core/ config/ --line-length=100
-	isort agents/ core/ config/ --profile=black
+	uv run black agents/ core/ config/ --line-length=100
+	uv run isort agents/ core/ config/ --profile=black
 
 format-check:
-	black agents/ core/ config/ --line-length=100 --check
-	isort agents/ core/ config/ --profile=black --check
+	uv run black agents/ core/ config/ --line-length=100 --check
+	uv run isort agents/ core/ config/ --profile=black --check
 
 # Cleaning
 clean:
@@ -70,32 +69,32 @@ clean-all: clean clean-data
 
 # Running
 run:
-	python factory.py run
+	uv run python factory.py run
 
 demo:
-	python demo.py
+	uv run python demo.py
 
 status:
-	python factory.py status
+	uv run python factory.py status
 
 continuous:
-	python factory.py continuous
+	uv run python factory.py continuous
 
 discover:
-	python factory.py discover
+	uv run python factory.py discover
 
 validate:
-	python factory.py validate
+	uv run python factory.py validate
 
 build:
-	python factory.py build
+	uv run python factory.py build
 
 cull:
-	python factory.py cull
+	uv run python factory.py cull
 
 # Dashboard
 dashboard:
-	python dashboard.py
+	uv run python dashboard.py
 
 # Database
 db-shell:
@@ -142,31 +141,27 @@ docker-compose-logs:
 
 # Development setup
 setup: install-dev
-	pre-commit install
+	uv run pre-commit install
 	mkdir -p data sites archive
 	cp .env.example .env
 	@echo "Setup complete! Edit .env file with your API keys."
 
 # Release
 release-patch:
-	bumpversion patch
+	uv run bumpversion patch
 
 release-minor:
-	bumpversion minor
+	uv run bumpversion minor
 
 release-major:
-	bumpversion major
+	uv run bumpversion major
 
 # Documentation
 docs-serve:
-	cd docs && mkdocs serve
+	uv run mkdocs serve
 
 docs-build:
-	cd docs && mkdocs build
-
-# Utilities
-requirements:
-	pip freeze > requirements.txt
+	uv run mkdocs build
 
 size:
 	du -sh .

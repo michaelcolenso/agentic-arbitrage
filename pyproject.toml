@@ -1,0 +1,50 @@
+[project]
+name = "agentic-arbitrage-factory"
+version = "0.1.0"
+description = "Autonomous system that discovers, validates, builds, deploys, and manages programmatic SEO sites."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "aiohttp>=3.9.0",
+    "aiohttp-retry>=2.8.0",
+    "beautifulsoup4>=4.12.0",
+    "click>=8.1.0",
+    "colorama>=0.4.6",
+    "diskcache>=5.6.0",
+    "lxml>=4.9.0",
+    "orjson>=3.9.0",
+    "pydantic>=2.0.0",
+    "python-dateutil>=2.8.0",
+    "python-dotenv>=1.0.0",
+    "rich>=13.5.0",
+    "schedule>=1.2.0",
+    "tqdm>=4.66.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "bandit>=1.7.5",
+    "black>=23.7.0",
+    "bumpversion>=0.6.0",
+    "flake8>=6.1.0",
+    "ipdb>=0.13.13",
+    "ipython>=8.15.0",
+    "isort>=5.12.0",
+    "line-profiler>=4.1.0",
+    "locust>=2.16.0",
+    "memory-profiler>=0.61.0",
+    "mkdocs>=1.5.0",
+    "mkdocs-material>=9.2.0",
+    "mypy>=1.5.0",
+    "pre-commit>=3.4.0",
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.1.0",
+    "pytest-mock>=3.11.0",
+    "safety>=2.3.0",
+    "types-python-dateutil>=2.8.0",
+    "types-requests>=2.31.0",
+]
+
+[tool.uv]
+package = false
