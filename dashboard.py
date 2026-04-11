@@ -173,6 +173,11 @@ class SimpleDashboard:
         print("="*70)
         print(f"Last Updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         
+        print(f"\n🎚️ MODE: {status.get('mode', 'unknown')}")
+        print(f"🎯 ACTIVE VERTICAL: {status.get('active_vertical', 'none')}")
+        ready = status.get('ready_to_fund', False)
+        print(f"💰 READY TO FUND: {'YES' if ready else 'NO'}")
+        
         print("\n📊 PORTFOLIO STATS:")
         stats = status.get("stats", {})
         for key, value in stats.items():
@@ -183,11 +188,27 @@ class SimpleDashboard:
         
         print("\n📋 OPPORTUNITIES BY STATUS:")
         for status_name, count in status.get("opportunities", {}).items():
-            print(f"  {status_name:25s}: {count:>12}")
+            if count > 0:
+                print(f"  {status_name:25s}: {count:>12}")
         
         print("\n🌐 SITES BY STATUS:")
         for status_name, count in status.get("sites", {}).items():
-            print(f"  {status_name:25s}: {count:>12}")
+            if count > 0:
+                print(f"  {status_name:25s}: {count:>12}")
+        
+        print("\n📊 EVIDENCE COMPLETENESS:")
+        completeness = status.get("evidence_completeness", 0)
+        print(f"  Overall: {completeness*100:.0f}%")
+        for etype, count in status.get("evidence_counts", {}).items():
+            print(f"  {etype:20s}: {count:>8} records")
+        
+        print("\n🚀 DEPLOYMENT HEALTH:")
+        health = status.get("deployment_health", {})
+        print(f"  Deployed sites: {health.get('deployed_count', 0)}")
+        print(f"  With live URL:  {health.get('with_url', 0)}")
+        
+        last_metrics = status.get("last_real_metrics_date")
+        print(f"\n📈 LAST REAL METRICS: {last_metrics or 'None'}")
         
         if status.get("recent_opportunities"):
             print("\n🆕 RECENT OPPORTUNITIES:")

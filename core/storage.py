@@ -11,7 +11,7 @@ from contextlib import contextmanager
 
 from config.settings import config
 from core.models import (
-    Opportunity, Site, SiteMetrics, FactoryStats,
+    Opportunity, Site, SiteMetrics, FactoryStats, Evidence,
     OpportunityStatus, SiteStatus, PainPoint, DataSource,
     KeywordOpportunity, FragmentationScore, MonetizationPotential
 )
@@ -133,6 +133,18 @@ class Storage:
                 INSERT OR IGNORE INTO factory_stats (id, last_updated)
                 VALUES (1, ?)
             """, (datetime.now().isoformat(),))
+            
+            # Evidence table
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS evidence (
+                    id TEXT PRIMARY KEY,
+                    evidence_type TEXT NOT NULL,
+                    opportunity_id TEXT,
+                    site_id TEXT,
+                    data TEXT,  -- JSON
+                    created_at TEXT NOT NULL
+                )
+            """)
     
     # Opportunity operations
     def save_opportunity(self, opp: Opportunity) -> None:
@@ -263,6 +275,41 @@ class Storage:
             ).fetchall()
             return [self._row_to_metrics(row) for row in rows]
     
+    def import_metrics_from_csv(self, csv_path: str) -> int:
+        """Import metrics from a CSV file. Expected columns:
+        site_id,date,organic_users,pageviews,conversions,revenue,source
+        """
+        import csv
+        count = 0
+        with open(csv_path, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                metrics = SiteMetrics(
+                    site_id=row.get("site_id", "").strip(),
+                    date=datetime.fromisoformat(row.get("date", "").strip()),
+                    organic_users=int(row.get("organic_users", 0) or 0),
+                    total_users=int(row.get("organic_users", 0) or 0),
+                    pageviews=int(row.get("pageviews", 0) or 0),
+                    revenue=float(row.get("revenue", 0) or 0),
+                )
+                self.save_metrics(metrics)
+                
+                # Also record metrics evidence
+                self.save_evidence(Evidence(
+                    evidence_type="metrics",
+                    site_id=metrics.site_id,
+                    data={
+                        "provider": row.get("source", "csv_import").strip(),
+                        "date_range": metrics.date.isoformat(),
+                        "organic_users": metrics.organic_users,
+                        "pageviews": metrics.pageviews,
+                        "conversions": int(row.get("conversions", 0) or 0),
+                        "revenue": metrics.revenue,
+                    }
+                ))
+                count += 1
+        return count
+    
     # Stats operations
     def get_stats(self) -> FactoryStats:
         with self._get_conn() as conn:
@@ -295,6 +342,44 @@ class Storage:
                 stats.avg_build_time_minutes, stats.avg_validation_time_hours,
                 stats.success_rate, datetime.now().isoformat()
             ))
+    
+    # Evidence operations
+    def save_evidence(self, evidence: Evidence) -> None:
+        with self._get_conn() as conn:
+            conn.execute("""
+                INSERT OR REPLACE INTO evidence (
+                    id, evidence_type, opportunity_id, site_id, data, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+            """, (
+                evidence.id, evidence.evidence_type,
+                evidence.opportunity_id, evidence.site_id,
+                json.dumps(evidence.data),
+                evidence.created_at.isoformat()
+            ))
+    
+    def get_evidence_for_opportunity(self, opportunity_id: str) -> List[Evidence]:
+        with self._get_conn() as conn:
+            rows = conn.execute(
+                "SELECT * FROM evidence WHERE opportunity_id = ? ORDER BY created_at DESC",
+                (opportunity_id,)
+            ).fetchall()
+            return [self._row_to_evidence(row) for row in rows]
+    
+    def get_evidence_for_site(self, site_id: str) -> List[Evidence]:
+        with self._get_conn() as conn:
+            rows = conn.execute(
+                "SELECT * FROM evidence WHERE site_id = ? ORDER BY created_at DESC",
+                (site_id,)
+            ).fetchall()
+            return [self._row_to_evidence(row) for row in rows]
+    
+    def get_evidence_by_type(self, evidence_type: str) -> List[Evidence]:
+        with self._get_conn() as conn:
+            rows = conn.execute(
+                "SELECT * FROM evidence WHERE evidence_type = ? ORDER BY created_at DESC",
+                (evidence_type,)
+            ).fetchall()
+            return [self._row_to_evidence(row) for row in rows]
     
     # Helper methods for serialization
     def _pain_point_to_dict(self, p: PainPoint) -> dict:
@@ -395,6 +480,16 @@ class Storage:
             affiliate_revenue=row["affiliate_revenue"],
             lead_gen_revenue=row["lead_gen_revenue"],
             ad_revenue=row["ad_revenue"]
+        )
+    
+    def _row_to_evidence(self, row: sqlite3.Row) -> Evidence:
+        return Evidence(
+            id=row["id"],
+            evidence_type=row["evidence_type"],
+            opportunity_id=row["opportunity_id"],
+            site_id=row["site_id"],
+            data=json.loads(row["data"] or "{}"),
+            created_at=datetime.fromisoformat(row["created_at"])
         )
     
     def _row_to_stats(self, row: sqlite3.Row) -> FactoryStats:

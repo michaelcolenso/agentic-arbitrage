@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 
-from core.models import Site, SiteMetrics, Opportunity, SiteStatus, OpportunityStatus
+from core.models import Site, SiteMetrics, Opportunity, SiteStatus, OpportunityStatus, Evidence
 from core.storage import Storage
 from config.settings import config
 
@@ -42,12 +42,28 @@ class ArchiveResult:
 class TrafficMonitor:
     """Monitors site traffic and performance"""
     
-    async def get_metrics(self, site: Site, days: int = 7) -> SiteMetrics:
+    async def get_metrics(self, site: Site, days: int = 7) -> Optional[SiteMetrics]:
         """Get latest metrics for a site"""
         # In production, this would fetch from:
         # - Google Analytics
         # - Cloudflare Analytics
         # - Search Console
+        
+        if config.is_production:
+            raise RuntimeError(
+                "Production mode requires real metrics providers or manual imports"
+            )
+        
+        # Try to get real metrics from storage first
+        storage = Storage()
+        history = storage.get_site_metrics(site.id)
+        if history:
+            # Return the most recent metrics
+            return sorted(history, key=lambda x: x.date, reverse=True)[0]
+        
+        if not config.is_demo:
+            # In staging, do not fabricate metrics
+            return None
         
         # For demo, generate mock metrics
         return self._generate_mock_metrics(site, days)
@@ -97,6 +113,19 @@ class TrafficMonitor:
                 # Save to storage
                 storage = Storage()
                 storage.save_metrics(metric)
+                
+                # Record metrics evidence
+                storage.save_evidence(Evidence(
+                    evidence_type="metrics",
+                    site_id=site.id,
+                    data={
+                        "provider": "demo",
+                        "date_range": metric.date.isoformat(),
+                        "organic_users": metric.organic_users,
+                        "pageviews": metric.pageviews,
+                        "revenue": metric.revenue,
+                    }
+                ))
             except Exception as e:
                 print(f"  Error collecting metrics for {site.id}: {e}")
         
@@ -109,12 +138,25 @@ class PerformanceAnalyzer:
     def __init__(self):
         self.storage = Storage()
     
-    def analyze(self, site: Site, metrics: SiteMetrics) -> CullDecision:
+    def analyze(self, site: Site, metrics: Optional[SiteMetrics]) -> CullDecision:
         """Analyze site and make culling decision"""
         days_active = (datetime.now() - (site.deployed_at or datetime.now())).days
         
         # Get historical metrics
         history = self.storage.get_site_metrics(site.id)
+        
+        # If no real metrics available outside demo, do not cull
+        if not history and not config.is_demo:
+            return CullDecision(
+                site_id=site.id,
+                should_cull=False,
+                reason="No real metrics available",
+                days_active=days_active,
+                avg_daily_traffic=0.0,
+                total_revenue=0.0,
+                recommendation="METRICS_UNAVAILABLE"
+            )
+        
         avg_traffic = self._calculate_avg_traffic(history, days=7)
         total_revenue = sum(m.revenue for m in history) if history else 0
         
@@ -355,9 +397,16 @@ class Mortician:
         winners = []
         promising = []
         
+        metrics_unavailable = []
+        
         for site in all_sites:
             site_metrics = metrics.get(site.id)
             if not site_metrics:
+                # No metrics at all
+                decision = self.performance_analyzer.analyze(site, None)
+                decisions.append(decision)
+                if decision.recommendation == "METRICS_UNAVAILABLE":
+                    metrics_unavailable.append(site.id)
                 continue
             
             decision = self.performance_analyzer.analyze(site, site_metrics)
@@ -381,12 +430,14 @@ class Mortician:
         print(f"  Culled: {len(culled)}")
         print(f"  Winners: {len(winners)}")
         print(f"  Promising: {len(promising)}")
+        print(f"  Metrics Unavailable: {len(metrics_unavailable)}")
         
         return {
             "evaluated": len(decisions),
             "culled": len(culled),
             "winners": len(winners),
             "promising": len(promising),
+            "metrics_unavailable": len(metrics_unavailable),
             "decisions": decisions
         }
     

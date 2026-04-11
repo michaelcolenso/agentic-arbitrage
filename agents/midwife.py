@@ -7,13 +7,14 @@ Validates: fragmentation, keyword difficulty, affiliate potential.
 import asyncio
 import aiohttp
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 import random
 
 from core.models import (
     Opportunity, FragmentationScore, MonetizationPotential,
-    OpportunityStatus
+    OpportunityStatus, Evidence
 )
 from core.storage import Storage
 from config.settings import config
@@ -59,8 +60,8 @@ class FragmentationAnalyzer:
         test_results = await self._test_data_access(data_sources)
         
         # Calculate metrics
-        total_data_points = sum(r["count"] for r in test_results)
-        sources_accessible = sum(1 for r in test_results if r["accessible"])
+        total_data_points = sum(r.get("sample_count", r.get("count", 0)) for r in test_results)
+        sources_accessible = sum(1 for r in test_results if r.get("accessible"))
         consistency = self._calculate_consistency(test_results)
         
         # Fragmentation score (lower = more fragmented = better for us)
@@ -107,31 +108,81 @@ class FragmentationAnalyzer:
         return results
     
     async def _test_api_access(self, session: aiohttp.ClientSession, source: Any) -> Dict:
-        """Test API data access"""
-        # Simulate API test
-        await asyncio.sleep(0.1)
-        
-        # Mock successful API access
-        return {
-            "source": source.name,
-            "accessible": True,
-            "count": random.randint(50, 500),
-            "response_time": random.uniform(0.1, 2.0),
-            "format": "json"
-        }
+        """Test API data access with a real HTTP probe"""
+        try:
+            async with session.get(source.url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                content_type = resp.headers.get("Content-Type", "unknown")
+                body_sample = ""
+                try:
+                    body_sample = (await resp.text())[:500]
+                except Exception:
+                    pass
+                
+                schema_hints = []
+                if "json" in content_type.lower() or body_sample.strip().startswith(("{", "[")):
+                    schema_hints.append("json")
+                
+                return {
+                    "source": source.name,
+                    "accessible": resp.status < 400,
+                    "status_code": resp.status,
+                    "content_type": content_type,
+                    "sample_count": len(body_sample),
+                    "schema_hints": schema_hints,
+                    "format": "json" if "json" in content_type.lower() else "unknown"
+                }
+        except Exception as e:
+            if config.is_production:
+                raise RuntimeError(
+                    f"Production mode requires successful data probe for {source.name}: {e}"
+                )
+            return {
+                "source": source.name,
+                "accessible": False,
+                "status_code": 0,
+                "content_type": "error",
+                "sample_count": 0,
+                "schema_hints": [],
+                "error": str(e)
+            }
     
     async def _test_scrape_access(self, session: aiohttp.ClientSession, source: Any) -> Dict:
-        """Test scrape data access"""
-        # Simulate scrape test
-        await asyncio.sleep(0.1)
-        
-        return {
-            "source": source.name,
-            "accessible": True,
-            "count": random.randint(20, 200),
-            "pages_tested": 5,
-            "structure_consistent": random.choice([True, True, False])
-        }
+        """Test scrape data access with a real HTTP probe"""
+        try:
+            async with session.get(source.url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                content_type = resp.headers.get("Content-Type", "unknown")
+                body_sample = ""
+                try:
+                    body_sample = (await resp.text())[:500]
+                except Exception:
+                    pass
+                
+                structure_consistent = "html" in content_type.lower() or "<" in body_sample
+                
+                return {
+                    "source": source.name,
+                    "accessible": resp.status < 400,
+                    "status_code": resp.status,
+                    "content_type": content_type,
+                    "sample_count": len(body_sample),
+                    "schema_hints": ["html"] if structure_consistent else [],
+                    "pages_tested": 1,
+                    "structure_consistent": structure_consistent
+                }
+        except Exception as e:
+            if config.is_production:
+                raise RuntimeError(
+                    f"Production mode requires successful data probe for {source.name}: {e}"
+                )
+            return {
+                "source": source.name,
+                "accessible": False,
+                "status_code": 0,
+                "content_type": "error",
+                "sample_count": 0,
+                "schema_hints": [],
+                "error": str(e)
+            }
     
     def _calculate_consistency(self, results: List[Dict]) -> float:
         """Calculate data consistency across sources"""
@@ -372,6 +423,40 @@ class MonetizationAnalyzer:
 class KeywordValidator:
     """Validates keyword difficulty and opportunity"""
     
+    def __init__(self):
+        self._snapshot: Optional[List[Dict[str, Any]]] = None
+    
+    def _load_snapshot(self) -> List[Dict[str, Any]]:
+        """Load manual CSV keyword/SERP snapshot if configured"""
+        if self._snapshot is not None:
+            return self._snapshot
+        
+        self._snapshot = []
+        path = config.validation.keyword_snapshot_path
+        if path and Path(path).exists():
+            import csv
+            with open(path, "r", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    self._snapshot.append({
+                        "keyword": row.get("keyword", "").strip().strip('"').lower(),
+                        "volume": int(row.get("volume", 0) or 0),
+                        "difficulty": float(row.get("difficulty", 0) or 0),
+                        "cpc": float(row.get("cpc", 0) or 0),
+                        "source": row.get("source", "manual_snapshot").strip().strip('"'),
+                        "captured_date": row.get("captured_date", "").strip().strip('"'),
+                    })
+        return self._snapshot
+    
+    def _lookup_snapshot(self, keyword: str) -> Optional[Dict[str, Any]]:
+        """Look up a keyword in the manual snapshot"""
+        snapshot = self._load_snapshot()
+        keyword_lower = keyword.strip().lower()
+        for entry in snapshot:
+            if entry["keyword"] == keyword_lower:
+                return entry
+        return None
+    
     async def validate(self, opportunity: Opportunity) -> Dict[str, Any]:
         """Validate keywords for the opportunity"""
         print(f"  🔑 Validating keywords for {opportunity.niche}...")
@@ -380,16 +465,32 @@ class KeywordValidator:
             "template_keywords": [],
             "avg_difficulty": 0.0,
             "total_volume": 0,
-            "opportunity_score": 0.0
+            "opportunity_score": 0.0,
+            "snapshot_hits": 0,
+            "snapshot_source": config.validation.keyword_snapshot_path,
         }
         
         keywords = opportunity.keywords
         if not keywords:
             return results
         
+        # Enrich keywords from snapshot if available
+        snapshot = self._load_snapshot()
+        for kw in keywords:
+            entry = self._lookup_snapshot(kw.keyword)
+            if entry:
+                kw.monthly_volume = entry.get("volume", kw.monthly_volume)
+                kw.difficulty = entry.get("difficulty", kw.difficulty)
+                kw.cpc = entry.get("cpc", kw.cpc)
+                results["snapshot_hits"] += 1
+        
+        # If not in demo and no snapshot data available, opportunity score should be low
+        if not config.is_demo and not snapshot:
+            results["opportunity_score"] = 0.0
+            return results
+        
         # Identify template keywords (programmatic SEO opportunities)
         for kw in keywords:
-            # Template keywords have patterns like "[X] in [Y]" or "best [X] for [Y]"
             if self._is_template_keyword(kw.keyword):
                 results["template_keywords"].append(kw.keyword)
         
@@ -398,7 +499,6 @@ class KeywordValidator:
         results["total_volume"] = sum(k.monthly_volume for k in keywords)
         
         # Calculate opportunity score
-        # Lower difficulty + higher volume = better opportunity
         difficulty_factor = max(0, (50 - results["avg_difficulty"]) / 50)
         volume_factor = min(results["total_volume"] / 50000, 1.0)
         template_factor = len(results["template_keywords"]) / max(len(keywords), 1)
@@ -452,6 +552,19 @@ class Midwife:
         notes.append(f"Data points found: {fragmentation.data_points_found}")
         notes.append(f"Automation potential: {fragmentation.automation_potential:.1f}/10")
         
+        # Record data probe evidence
+        self.storage.save_evidence(Evidence(
+            evidence_type="data_probe",
+            opportunity_id=opportunity.id,
+            data={
+                "fragmentation_score": fragmentation.score,
+                "data_points_found": fragmentation.data_points_found,
+                "sources_analyzed": fragmentation.sources_analyzed,
+                "automation_potential": fragmentation.automation_potential,
+                "consistency_rating": fragmentation.consistency_rating,
+            }
+        ))
+        
         # Step 2: Analyze monetization
         monetization = await self.monetization_analyzer.analyze(opportunity)
         opportunity.monetization = monetization
@@ -460,14 +573,51 @@ class Midwife:
         notes.append(f"Estimated MRR: ${monetization.estimated_monthly_revenue}")
         notes.append(f"Affiliate programs found: {len(monetization.affiliate_programs)}")
         
+        # Record monetization evidence
+        self.storage.save_evidence(Evidence(
+            evidence_type="monetization",
+            opportunity_id=opportunity.id,
+            data={
+                "score": monetization.score,
+                "estimated_monthly_revenue": monetization.estimated_monthly_revenue,
+                "affiliate_programs": [p["name"] for p in monetization.affiliate_programs],
+                "lead_gen_potential": monetization.lead_gen_potential,
+                "ad_potential": monetization.ad_potential,
+            }
+        ))
+        
         # Step 3: Validate keywords
         keyword_results = await self.keyword_validator.validate(opportunity)
         
         notes.append(f"Template keywords: {len(keyword_results['template_keywords'])}")
         notes.append(f"Avg keyword difficulty: {keyword_results['avg_difficulty']:.1f}")
         
-        # Calculate overall validation score
-        overall_score = opportunity.calculate_validation_score()
+        # Record keyword evidence
+        self.storage.save_evidence(Evidence(
+            evidence_type="keyword",
+            opportunity_id=opportunity.id,
+            data={
+                "avg_difficulty": keyword_results["avg_difficulty"],
+                "total_volume": keyword_results["total_volume"],
+                "opportunity_score": keyword_results["opportunity_score"],
+                "template_keywords": keyword_results["template_keywords"],
+            }
+        ))
+        
+        # Calculate weighted validation score per MVP spec:
+        # Data access 30%, Keyword/SERP 30%, Monetization 25%, Buildability/automation 15%
+        data_score = min(fragmentation.automation_potential, 10.0)
+        keyword_score = min(keyword_results["opportunity_score"], 10.0)
+        monetization_score = min(monetization.score, 10.0)
+        automation_score = min(fragmentation.automation_potential, 10.0)
+        
+        overall_score = (
+            data_score * 0.30 +
+            keyword_score * 0.30 +
+            monetization_score * 0.25 +
+            automation_score * 0.15
+        )
+        opportunity.validation_score = overall_score
         
         # Determine if passes gate
         passes = self._passes_gate(
@@ -482,6 +632,7 @@ class Midwife:
             opportunity.validated_at = datetime.now()
             notes.append("✅ PASSED validation gate")
         else:
+            opportunity.status = OpportunityStatus.REJECTED
             notes.append("❌ FAILED validation gate")
         
         self.storage.save_opportunity(opportunity)
@@ -521,8 +672,9 @@ class Midwife:
         if monetization.score < cfg.min_monetization_score:
             return False
         
-        # Check overall score
-        if overall_score < 5.0:
+        # Use stricter threshold in production
+        min_score = cfg.production_pass_threshold if config.is_production else 5.0
+        if overall_score < min_score:
             return False
         
         # Check keyword opportunity

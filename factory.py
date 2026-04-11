@@ -9,6 +9,7 @@ The factory that builds the factories. Orchestrates:
 """
 import asyncio
 import argparse
+import os
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
@@ -55,6 +56,22 @@ class ArbitrageFactory:
         self.midwife = Midwife(self.storage)
         self.constructor = Constructor(self.storage)
         self.mortician = Mortician(self.storage)
+    
+    def assert_production_ready(self) -> None:
+        """Fail closed in production if required providers are missing."""
+        if not config.is_production:
+            return
+        
+        missing = []
+        if not config.cloudflare_api_token:
+            missing.append("CLOUDFLARE_API_TOKEN")
+        if not config.github_token:
+            missing.append("GITHUB_TOKEN")
+        
+        if missing:
+            raise RuntimeError(
+                f"production mode requires missing provider(s): {', '.join(missing)}"
+            )
     
     async def run_full_cycle(self) -> FactoryRunResult:
         """Run a complete factory cycle"""
@@ -166,6 +183,10 @@ class ArbitrageFactory:
         
         return await self.mortician.evaluate_portfolio()
     
+    def import_metrics(self, csv_path: str) -> int:
+        """Import metrics from a CSV file"""
+        return self.storage.import_metrics_from_csv(csv_path)
+    
     async def run_continuous(self):
         """Run factory continuously"""
         print("\n" + "="*70)
@@ -192,7 +213,7 @@ class ArbitrageFactory:
         """Get current factory status"""
         stats = self.storage.get_stats()
         
-        # Get counts by status
+        # Get counts by status from actual persisted data
         all_opportunities = self.storage.get_all_opportunities()
         all_sites = self.storage.get_all_sites()
         
@@ -208,13 +229,64 @@ class ArbitrageFactory:
                 1 for s in all_sites if s.status == status
             )
         
+        # Active vertical
+        ev_opps = [o for o in all_opportunities if o.niche == "ev_charger_rebates"]
+        active_vertical = "ev_charger_rebates" if ev_opps else (all_opportunities[0].niche if all_opportunities else "none")
+        
+        # Evidence completeness
+        evidence_counts = {}
+        for etype in ["discovery", "data_probe", "keyword", "monetization", "deployment", "metrics"]:
+            evidence_counts[etype] = len(self.storage.get_evidence_by_type(etype))
+        evidence_completeness = sum(1 for c in evidence_counts.values() if c > 0) / len(evidence_counts)
+        
+        # Deployment health of recent deployed sites
+        deployed_sites = [s for s in all_sites if s.status == SiteStatus.DEPLOYED]
+        deployment_health = {
+            "deployed_count": len(deployed_sites),
+            "with_url": sum(1 for s in deployed_sites if s.deploy_url),
+        }
+        
+        # Last real metrics date
+        all_metrics_evidence = self.storage.get_evidence_by_type("metrics")
+        last_metrics_date = None
+        if all_metrics_evidence:
+            last_metrics_date = all_metrics_evidence[0].data.get("date_range")
+        
+        # Ready to fund check
+        has_validated_ev = any(o.status == OpportunityStatus.VALIDATED for o in ev_opps)
+        has_deployed_ev_site = any(
+            s.niche == "ev_charger_rebates" and s.status == SiteStatus.DEPLOYED
+            for s in all_sites
+        )
+        has_build_pass = any(
+            s.niche == "ev_charger_rebates" and s.status in (SiteStatus.DEPLOYED, SiteStatus.RANKING)
+            for s in all_sites
+        )
+        has_metrics_source = len(all_metrics_evidence) > 0 or config.validation.keyword_snapshot_path
+        has_conversion_path = has_deployed_ev_site  # Checklist page is part of deployed site
+        
+        ready_to_fund = (
+            has_validated_ev and
+            has_build_pass and
+            has_deployed_ev_site and
+            has_metrics_source and
+            has_conversion_path
+        )
+        
         return {
+            "mode": config.factory_mode,
+            "active_vertical": active_vertical,
+            "ready_to_fund": ready_to_fund,
+            "evidence_completeness": evidence_completeness,
+            "evidence_counts": evidence_counts,
+            "deployment_health": deployment_health,
+            "last_real_metrics_date": last_metrics_date,
             "stats": {
-                "total_opportunities": stats.total_opportunities,
-                "validated_opportunities": stats.validated_opportunities,
-                "active_sites": stats.active_sites,
-                "winner_sites": stats.winner_sites,
-                "culled_sites": stats.culled_sites,
+                "total_opportunities": len(all_opportunities),
+                "validated_opportunities": opportunity_counts.get("validated", 0),
+                "active_sites": site_counts.get("deployed", 0) + site_counts.get("monitoring", 0) + site_counts.get("ranking", 0),
+                "winner_sites": site_counts.get("profitable", 0),
+                "culled_sites": site_counts.get("culled", 0),
                 "total_mrr": stats.total_mrr,
                 "portfolio_value": stats.portfolio_value,
                 "success_rate": stats.success_rate
@@ -285,13 +357,8 @@ Examples:
   python factory.py cull             Run culling only
   python factory.py continuous       Run continuously
   python factory.py status           Show factory status
+  python factory.py metrics import <csv>   Import metrics from CSV
         """
-    )
-    
-    parser.add_argument(
-        "command",
-        choices=["run", "discover", "validate", "build", "cull", "continuous", "status"],
-        help="Command to execute"
     )
     
     parser.add_argument(
@@ -301,6 +368,25 @@ Examples:
         help="Maximum concurrent sites (default: 50)"
     )
     
+    parser.add_argument(
+        "--mode",
+        choices=["demo", "staging", "production"],
+        default=config.factory_mode,
+        help="Factory runtime mode (default: from FACTORY_MODE env or demo)"
+    )
+    
+    subparsers = parser.add_subparsers(dest="command")
+    
+    # Lifecycle commands
+    for cmd in ["run", "discover", "validate", "build", "cull", "continuous", "status"]:
+        subparsers.add_parser(cmd, help=f"{cmd} command")
+    
+    # Metrics command
+    metrics_parser = subparsers.add_parser("metrics", help="Metrics management")
+    metrics_sub = metrics_parser.add_subparsers(dest="metrics_action")
+    import_parser = metrics_sub.add_parser("import", help="Import metrics from CSV")
+    import_parser.add_argument("csv_path", help="Path to CSV file")
+    
     return parser
 
 
@@ -309,7 +395,17 @@ async def main():
     parser = create_cli()
     args = parser.parse_args()
     
+    if not args.command:
+        parser.print_help()
+        return
+    
+    # Set runtime mode from CLI argument
+    os.environ["FACTORY_MODE"] = args.mode
+    
     factory = ArbitrageFactory()
+    
+    # Production fail-closed check
+    factory.assert_production_ready()
     
     if args.command == "run":
         await factory.run_full_cycle()
@@ -344,6 +440,8 @@ async def main():
         print("🏭 FACTORY STATUS")
         print("="*70)
         
+        print(f"\n🎚️ MODE: {status['mode']}")
+        
         print("\n📊 OVERALL STATS:")
         for key, value in status["stats"].items():
             if isinstance(value, float):
@@ -368,6 +466,13 @@ async def main():
             print(f"  • {site['name']} ({site['status']})")
             if site['url']:
                 print(f"    URL: {site['url']}")
+    
+    elif args.command == "metrics":
+        if args.metrics_action == "import":
+            count = factory.import_metrics(args.csv_path)
+            print(f"\n✅ Imported {count} metrics records")
+        else:
+            print("\n⚠️ Usage: factory.py metrics import <csv_path>")
 
 
 if __name__ == "__main__":

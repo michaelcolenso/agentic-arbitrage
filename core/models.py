@@ -11,8 +11,11 @@ class OpportunityStatus(Enum):
     DISCOVERED = "discovered"
     VALIDATING = "validating"
     VALIDATED = "validated"
+    REJECTED = "rejected"
     BUILDING = "building"
+    BUILD_FAILED = "build_failed"
     DEPLOYED = "deployed"
+    DEPLOYMENT_FAILED = "deployment_failed"
     MONITORING = "monitoring"
     WINNER = "winner"
     CULLED = "culled"
@@ -22,11 +25,22 @@ class SiteStatus(Enum):
     PENDING = "pending"
     BUILDING = "building"
     DEPLOYED = "deployed"
+    FAILED = "failed"
     INDEXING = "indexing"
     MONITORING = "monitoring"
     RANKING = "ranking"
     PROFITABLE = "profitable"
     CULLED = "culled"
+
+@dataclass
+class Evidence:
+    """Persisted evidence record for a decision"""
+    id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
+    evidence_type: str = ""  # discovery, data_probe, keyword, monetization, deployment, metrics
+    opportunity_id: Optional[str] = None
+    site_id: Optional[str] = None
+    data: Dict[str, Any] = field(default_factory=dict)
+    created_at: datetime = field(default_factory=datetime.now)
 
 @dataclass
 class PainPoint:

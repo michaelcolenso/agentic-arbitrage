@@ -16,7 +16,7 @@ from collections import Counter
 
 from core.models import (
     Opportunity, PainPoint, DataSource, KeywordOpportunity,
-    OpportunityStatus
+    OpportunityStatus, Evidence
 )
 from core.storage import Storage
 from config.settings import config
@@ -35,7 +35,7 @@ class PainPivot:
 
 
 class RedditMonitor:
-    """Monitors Reddit for pain points and complaints"""
+    """Monitors Reddit for pain points and complaints via public JSON API"""
     
     PAIN_PATTERNS = [
         r"hard to find",
@@ -55,90 +55,114 @@ class RedditMonitor:
         r"why isn't there",
     ]
     
-    def __init__(self, client_id: str = None, client_secret: str = None):
-        self.client_id = client_id or config.reddit_client_id
-        self.client_secret = client_secret or config.reddit_client_secret
-        self.reddit = None
-        if self.client_id and self.client_secret:
-            self.reddit = praw.Reddit(
-                client_id=self.client_id,
-                client_secret=self.client_secret,
-                user_agent="AgenticArbitrageFactory/1.0"
+    EV_SEARCH_PATTERNS = [
+        r"ev charger rebate",
+        r"level 2 charger rebate",
+        r"charger tax credit",
+        r"8911",
+        r"30c",
+        r"utility rebate",
+        r"charger install cost",
+        r"qualifying census tract",
+    ]
+    
+    def __init__(self):
+        self.session: Optional[aiohttp.ClientSession] = None
+        self._seen_hashes: set = set()
+    
+    async def _get_session(self) -> aiohttp.ClientSession:
+        if self.session is None or self.session.closed:
+            self.session = aiohttp.ClientSession(
+                headers={
+                    "User-Agent": "Mozilla/5.0 (compatible; AgenticArbitrageFactory/1.0; +https://example.com/bot)"
+                }
             )
+        return self.session
+    
+    def _hash_pain(self, url: str, text: str) -> str:
+        import hashlib
+        normalized = (url or "").strip().lower() + "::" + text.strip().lower()[:200]
+        return hashlib.md5(normalized.encode()).hexdigest()
     
     async def scan_subreddits(self, subreddits: List[str] = None) -> List[PainPoint]:
-        """Scan subreddits for pain points"""
-        if not self.reddit:
-            # Return mock data if no Reddit credentials
-            return self._get_mock_pain_points()
-        
+        """Scan subreddits for pain points using Reddit's public JSON API"""
         subreddits = subreddits or config.discovery.reddit_subreddits
         pain_points = []
         
+        session = await self._get_session()
+        
         for subreddit_name in subreddits:
             try:
-                subreddit = self.reddit.subreddit(subreddit_name)
-                
-                # Check hot and new posts
-                for post in list(subreddit.hot(limit=50)) + list(subreddit.new(limit=50)):
-                    pain = self._analyze_post(post)
-                    if pain:
-                        pain_points.append(pain)
-                    
-                    # Check comments
-                    try:
-                        post.comments.replace_more(limit=0)
-                        for comment in post.comments[:10]:
-                            pain = self._analyze_comment(comment, post)
-                            if pain:
-                                pain_points.append(pain)
-                    except Exception:
-                        pass
+                for listing in ["hot", "new"]:
+                    url = f"https://www.reddit.com/r/{subreddit_name}/{listing}.json"
+                    async with session.get(url, params={"limit": 50}) as resp:
+                        if resp.status != 200:
+                            print(f"  Reddit r/{subreddit_name}/{listing} returned {resp.status}")
+                            continue
+                        data = await resp.json()
+                        posts = data.get("data", {}).get("children", [])
                         
+                        for post_wrapper in posts:
+                            post = post_wrapper.get("data", {})
+                            pain = self._analyze_post(subreddit_name, post)
+                            if pain and self._dedupe(pain):
+                                pain_points.append(pain)
+                    
+                    # Rate limiting: sleep briefly between requests
+                    await asyncio.sleep(0.5)
+                    
             except Exception as e:
                 print(f"Error scanning r/{subreddit_name}: {e}")
                 continue
         
+        if not pain_points and not config.is_production:
+            # Fallback to mock data in demo/staging only if no real data found
+            mock_points = self._get_mock_pain_points()
+            for p in mock_points:
+                if self._dedupe(p):
+                    pain_points.append(p)
+        
         return pain_points
     
-    def _analyze_post(self, post) -> Optional[PainPoint]:
-        """Analyze a post for pain patterns"""
-        text = f"{post.title} {post.selftext}".lower()
-        
-        for pattern in self.PAIN_PATTERNS:
-            if re.search(pattern, text):
-                sentiment = self._estimate_sentiment(text)
-                keywords = self._extract_keywords(text)
-                
-                return PainPoint(
-                    source=f"reddit:r/{post.subreddit.display_name}",
-                    text=post.title,
-                    sentiment_score=sentiment,
-                    engagement=post.score + post.num_comments,
-                    keywords=keywords,
-                    timestamp=datetime.fromtimestamp(post.created_utc),
-                    url=f"https://reddit.com{post.permalink}"
-                )
-        return None
+    def _dedupe(self, pain: PainPoint) -> bool:
+        h = self._hash_pain(pain.url, pain.text)
+        if h in self._seen_hashes:
+            return False
+        self._seen_hashes.add(h)
+        return True
     
-    def _analyze_comment(self, comment, post) -> Optional[PainPoint]:
-        """Analyze a comment for pain patterns"""
-        text = comment.body.lower()
+    def _analyze_post(self, subreddit_name: str, post: Dict) -> Optional[PainPoint]:
+        """Analyze a post for pain patterns"""
+        title = post.get("title", "")
+        selftext = post.get("selftext", "")
+        text = f"{title} {selftext}".lower()
         
+        # Check for general pain patterns OR EV-specific search patterns
+        matched = False
         for pattern in self.PAIN_PATTERNS:
             if re.search(pattern, text):
-                sentiment = self._estimate_sentiment(text)
-                keywords = self._extract_keywords(text)
-                
-                return PainPoint(
-                    source=f"reddit:r/{post.subreddit.display_name}:comment",
-                    text=text[:200],
-                    sentiment_score=sentiment,
-                    engagement=comment.score,
-                    keywords=keywords,
-                    timestamp=datetime.fromtimestamp(comment.created_utc),
-                    url=f"https://reddit.com{post.permalink}"
-                )
+                matched = True
+                break
+        if not matched:
+            for pattern in self.EV_SEARCH_PATTERNS:
+                if re.search(pattern, text):
+                    matched = True
+                    break
+        
+        if matched:
+            sentiment = self._estimate_sentiment(text)
+            keywords = self._extract_keywords(text)
+            permalink = post.get("permalink", "")
+            
+            return PainPoint(
+                source=f"reddit:r/{subreddit_name}",
+                text=title,
+                sentiment_score=sentiment,
+                engagement=post.get("score", 0) + post.get("num_comments", 0),
+                keywords=keywords,
+                timestamp=datetime.fromtimestamp(post.get("created_utc", 0)),
+                url=f"https://reddit.com{permalink}" if permalink else None
+            )
         return None
     
     def _estimate_sentiment(self, text: str) -> float:
@@ -258,6 +282,10 @@ class DataGovMonitor:
             except Exception as e:
                 print(f"Error fetching data.gov: {e}")
         
+        if config.is_production:
+            raise RuntimeError(
+                "Production mode requires successful data.gov access"
+            )
         return self._get_mock_datasets()
     
     def _parse_datasets(self, data: Dict) -> List[DataSource]:
@@ -544,6 +572,23 @@ class RedQueen:
             if opp:
                 opportunities.append(opp)
                 self.storage.save_opportunity(opp)
+                
+                # Record discovery evidence for the first pain point
+                if pivot.pain_points:
+                    first_pain = pivot.pain_points[0]
+                    self.storage.save_evidence(Evidence(
+                        evidence_type="discovery",
+                        opportunity_id=opp.id,
+                        data={
+                            "source": first_pain.source,
+                            "url": first_pain.url,
+                            "snippet": first_pain.text[:300],
+                            "timestamp": first_pain.timestamp.isoformat(),
+                            "engagement": first_pain.engagement,
+                            "theme": pivot.niche,
+                            "confidence": 0.7,
+                        }
+                    ))
         
         print(f"✅ Red Queen: Created {len(opportunities)} new opportunities")
         return opportunities

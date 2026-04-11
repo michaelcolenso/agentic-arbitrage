@@ -8,14 +8,16 @@ Generates complete SEO sites in < 5 minutes:
 - Comparison tools
 """
 import asyncio
+import aiohttp
 import os
+import subprocess
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 import json
 
-from core.models import Opportunity, Site, SiteStatus, OpportunityStatus
+from core.models import Opportunity, Site, SiteStatus, OpportunityStatus, Evidence
 from core.storage import Storage
 from config.settings import config
 
@@ -241,6 +243,10 @@ class TemplateGenerator:
     
     def generate(self, opportunity: Opportunity) -> Dict[str, str]:
         print("  Generating SEO templates...")
+        
+        if opportunity.niche == "ev_charger_rebates":
+            return EVChargerTemplateGenerator().generate()
+        
         templates = {}
         niche_title = opportunity.niche.replace("_", " ").title()
         niche_lower = opportunity.niche.replace("_", " ").lower()
@@ -327,6 +333,316 @@ export async function getStaticProps() {{
 '''
 
 
+class EVChargerTemplateGenerator:
+    """Generates EV charger incentives Next.js App Router templates"""
+    
+    STATES = [
+        "California", "Texas", "Florida", "New York", "Pennsylvania",
+        "Illinois", "Ohio", "Georgia", "North Carolina", "Michigan"
+    ]
+    
+    def generate(self) -> Dict[str, str]:
+        templates = {}
+        templates["layout"] = self._layout()
+        templates["page"] = self._home_page()
+        templates["ev-charger-rebates/page"] = self._rebates_list_page()
+        templates["ev-charger-rebates/[state]/page"] = self._state_page()
+        templates["ev-charger-tax-credit/page"] = self._tax_credit_page()
+        templates["level-2-charger-rebate-checklist/page"] = self._checklist_page()
+        templates["api/health/route"] = self._health_route()
+        templates["robots"] = self._robots()
+        templates["sitemap"] = self._sitemap()
+        templates["next-config"] = self._next_config()
+        return templates
+    
+    def _layout(self) -> str:
+        return '''export const metadata = {
+  title: {
+    default: "EV Charger Rebates & Tax Credits",
+    template: "%s | EV Charger Rebates",
+  },
+  description: "Find EV charger rebates, tax credits, and incentives by state and utility. Updated for the federal 30C credit deadline.",
+};
+
+export default function RootLayout({ children }) {
+  return (
+    <html lang="en">
+      <body style={{ fontFamily: "system-ui, sans-serif", margin: 0, padding: 0 }}>
+        <header style={{ padding: "1rem", borderBottom: "1px solid #eee" }}>
+          <nav>
+            <a href="/" style={{ marginRight: "1rem" }}>Home</a>
+            <a href="/ev-charger-rebates" style={{ marginRight: "1rem" }}>Rebates by State</a>
+            <a href="/ev-charger-tax-credit" style={{ marginRight: "1rem" }}>Tax Credit</a>
+            <a href="/level-2-charger-rebate-checklist">Checklist</a>
+          </nav>
+        </header>
+        <main style={{ padding: "1rem" }}>{children}</main>
+        <footer style={{ padding: "1rem", borderTop: "1px solid #eee", marginTop: "2rem" }}>
+          <p>© {new Date().getFullYear()} EV Charger Rebates Database</p>
+        </footer>
+      </body>
+    </html>
+  );
+}
+'''
+    
+    def _home_page(self) -> str:
+        return '''import Link from "next/link";
+
+export default function HomePage() {
+  return (
+    <div>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "WebSite",
+            name: "EV Charger Rebates Database",
+            url: "/",
+          }),
+        }}
+      />
+      <h1>EV Charger Rebates & Incentives Database</h1>
+      <p>Find money-back programs for installing a Level 2 EV charger at home before the June 30, 2026 federal credit deadline.</p>
+      
+      <section style={{ marginTop: "1.5rem" }}>
+        <h2>Quick Links</h2>
+        <ul>
+          <li><Link href="/ev-charger-rebates">Browse rebates by state</Link></li>
+          <li><Link href="/ev-charger-tax-credit">Federal 30C tax credit</Link></li>
+          <li><Link href="/level-2-charger-rebate-checklist">Get your personalized checklist</Link></li>
+        </ul>
+      </section>
+    </div>
+  );
+}
+'''
+    
+    def _rebates_list_page(self) -> str:
+        states_str = ", ".join([f'"{s}"' for s in self.STATES])
+        return f'''import Link from "next/link";
+
+export default function RebatesListPage() {{
+  const states = [{states_str}];
+  return (
+    <div>
+      <h1>EV Charger Rebates by State</h1>
+      <p>Browse state and utility rebates for home EV charger installation.</p>
+      <ul>
+        {{states.map((state) => (
+          <li key={{state}}>
+            <Link href={{`/ev-charger-rebates/${{state.toLowerCase().replace(/\\s/g, "-")}}`}}>
+              {{state}} EV Charger Rebates
+            </Link>
+          </li>
+        ))}}
+      </ul>
+      <p><Link href="/ev-charger-tax-credit">→ See the federal 30C tax credit</Link></p>
+    </div>
+  );
+}}
+'''
+    
+    def _state_page(self) -> str:
+        return '''export default function StatePage({ params }) {
+  const state = params.state;
+  const stateTitle = state.replace(/-/g, " ").replace(/\\b\\w/g, (l) => l.toUpperCase());
+  return (
+    <div>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "GovernmentService",
+            name: `${stateTitle} EV Charger Rebates`,
+            serviceType: "Rebate Program",
+            areaServed: { "@type": "State", name: stateTitle },
+          }),
+        }}
+      />
+      <h1>{stateTitle} EV Charger Rebates</h1>
+      <p>State and utility rebates for {stateTitle} residents installing a Level 2 home EV charger.</p>
+      <p><a href="/ev-charger-tax-credit">→ Federal 30C tax credit details</a></p>
+      <p><a href="/level-2-charger-rebate-checklist">→ Get your rebate checklist</a></p>
+    </div>
+  );
+}
+'''
+    
+    def _tax_credit_page(self) -> str:
+        return '''export default function TaxCreditPage() {
+  return (
+    <div>
+      <h1>Federal EV Charger Tax Credit (30C)</h1>
+      <p>
+        The federal 30C tax credit covers 30% of the cost to install a qualified EV charger at your
+        primary residence, up to $1,000. <strong>Deadline: June 30, 2026.</strong>
+      </p>
+      <h2>Who Qualifies</h2>
+      <ul>
+        <li>Property must be in a low-income community or non-urban census tract</li>
+        <li>Charger must be Level 2 or higher and installed at a primary residence</li>
+      </ul>
+      <p><a href="/level-2-charger-rebate-checklist">→ Check if you qualify</a></p>
+    </div>
+  );
+}
+'''
+    
+    def _checklist_page(self) -> str:
+        return '''export default function ChecklistPage() {
+  return (
+    <div>
+      <h1>Level 2 Charger Rebate Checklist</h1>
+      <p>Enter your ZIP code and email to get a personalized rebate checklist.</p>
+      <form action="/api/lead" method="POST" style={{ maxWidth: 400 }}>
+        <div style={{ marginBottom: "1rem" }}>
+          <label htmlFor="zip">ZIP Code</label>
+          <input id="zip" name="zip" type="text" maxLength={10} required style={{ width: "100%" }} />
+        </div>
+        <div style={{ marginBottom: "1rem" }}>
+          <label htmlFor="email">Email</label>
+          <input id="email" name="email" type="email" required style={{ width: "100%" }} />
+        </div>
+        <button type="submit">Get My Checklist</button>
+      </form>
+      <p style={{ marginTop: "1rem" }}><a href="/ev-charger-rebates">← Back to rebates by state</a></p>
+    </div>
+  );
+}
+'''
+    
+    def _health_route(self) -> str:
+        return '''export async function GET() {
+  return Response.json({ status: "ok", timestamp: new Date().toISOString() });
+}
+'''
+    
+    def _robots(self) -> str:
+        return "User-agent: *\\nAllow: /\\n\\nSitemap: /sitemap.xml\\n"
+    
+    def _sitemap(self) -> str:
+        return '''export default function sitemap() {
+  const base = "https://example.com";
+  const routes = [
+    "",
+    "/ev-charger-rebates",
+    "/ev-charger-tax-credit",
+    "/level-2-charger-rebate-checklist",
+  ];
+  return routes.map((route) => ({
+    url: `${base}${route}`,
+    lastModified: new Date(),
+  }));
+}
+'''
+    
+    def _next_config(self) -> str:
+        return '''/** @type {import('next').NextConfig} */
+const nextConfig = {
+  output: 'export',
+  distDir: 'dist',
+};
+module.exports = nextConfig;
+'''
+
+
+class DeploymentAdapter:
+    """Base deployment adapter"""
+    
+    async def deploy(self, site: Site, project_path: Path) -> Dict[str, str]:
+        raise NotImplementedError
+    
+    async def health_check(self, deploy_url: str) -> bool:
+        if deploy_url.startswith("file://"):
+            local_path = Path(deploy_url.replace("file://", ""))
+            return local_path.exists() and (local_path / "index.html").exists()
+        
+        health_url = deploy_url.rstrip("/") + "/api/health"
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(health_url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                    return resp.status == 200
+        except Exception:
+            # Fallback: check root URL
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(deploy_url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                        return resp.status == 200
+            except Exception:
+                return False
+
+
+class DemoDeploymentAdapter(DeploymentAdapter):
+    """Fake deployment for demo mode"""
+    
+    async def deploy(self, site: Site, project_path: Path) -> Dict[str, str]:
+        domain = site.niche.replace("_", "-") + ".pages.dev"
+        return {"url": "https://" + domain, "project_id": site.id, "adapter": "demo"}
+    
+    async def health_check(self, deploy_url: str) -> bool:
+        return True
+
+
+class LocalDeploymentAdapter(DeploymentAdapter):
+    """Local file deployment for tests and staging"""
+    
+    async def deploy(self, site: Site, project_path: Path) -> Dict[str, str]:
+        import shutil
+        deploy_dir = project_path.parent / "deployments" / site.id
+        deploy_dir.mkdir(parents=True, exist_ok=True)
+        
+        dist_dir = project_path / "dist"
+        if dist_dir.exists():
+            shutil.copytree(dist_dir, deploy_dir, dirs_exist_ok=True)
+        else:
+            # Copy project files as fallback
+            shutil.copytree(project_path, deploy_dir, dirs_exist_ok=True)
+        
+        return {"url": "file://" + str(deploy_dir), "project_id": site.id, "adapter": "local"}
+
+
+class CloudflareDeploymentAdapter(DeploymentAdapter):
+    """Production Cloudflare Pages deployment"""
+    
+    async def deploy(self, site: Site, project_path: Path) -> Dict[str, str]:
+        if not config.cloudflare_api_token:
+            raise RuntimeError("CloudflareDeploymentAdapter requires CLOUDFLARE_API_TOKEN")
+        
+        # Try wrangler CLI deployment if available
+        wrangler_check = subprocess.run(
+            ["npx", "wrangler", "--version"],
+            capture_output=True,
+            timeout=30
+        )
+        
+        if wrangler_check.returncode != 0:
+            raise RuntimeError(
+                "CloudflareDeploymentAdapter requires wrangler CLI. "
+                "Install with: npm install -g wrangler"
+            )
+        
+        # For this MVP, we run wrangler pages deploy
+        # In a full implementation, this would use the Cloudflare API directly
+        deploy_result = subprocess.run(
+            ["npx", "wrangler", "pages", "deploy", "dist", "--project-name", site.niche.replace("_", "-")],
+            cwd=project_path,
+            capture_output=True,
+            text=True,
+            timeout=300,
+            env={**os.environ, "CLOUDFLARE_API_TOKEN": config.cloudflare_api_token}
+        )
+        
+        if deploy_result.returncode != 0:
+            raise RuntimeError(f"Wrangler deploy failed: {deploy_result.stderr[:500]}")
+        
+        # Extract URL from wrangler output (best-effort)
+        url = f"https://{site.niche.replace('_', '-')}.pages.dev"
+        return {"url": url, "project_id": site.id, "adapter": "cloudflare"}
+
+
 class Constructor:
     """The Constructor Build Agent"""
     
@@ -335,6 +651,13 @@ class Constructor:
         self.schema_generator = SchemaGenerator()
         self.adapter_generator = ScrapingAdapterGenerator()
         self.template_generator = TemplateGenerator()
+    
+    def _get_deployment_adapter(self) -> DeploymentAdapter:
+        if config.is_demo:
+            return DemoDeploymentAdapter()
+        if config.is_production:
+            return CloudflareDeploymentAdapter()
+        return LocalDeploymentAdapter()
     
     async def build(self, opportunity: Opportunity) -> BuildResult:
         print("\\nBuilding " + opportunity.niche + "...")
@@ -362,13 +685,42 @@ class Constructor:
                 site, opportunity, schema, adapters, templates
             )
             
+            # Build gate
+            build_output = await self._run_build(project_path)
+            
+            if not build_output["success"]:
+                raise RuntimeError(f"Build failed: {build_output['output'][:500]}")
+            
             deploy_result = await self._deploy(site, project_path)
+            
+            site.deploy_url = deploy_result.get("url")
+            
+            # Health check before marking DEPLOYED
+            adapter = self._get_deployment_adapter()
+            healthy = await adapter.health_check(site.deploy_url)
+            
+            if not healthy:
+                raise RuntimeError(f"Health check failed for {site.deploy_url}")
             
             site.status = SiteStatus.DEPLOYED
             site.deployed_at = datetime.now()
-            site.deploy_url = deploy_result.get("url")
             site.page_count = len(templates) * 50
             self.storage.save_site(site)
+            
+            # Record deployment evidence
+            self.storage.save_evidence(Evidence(
+                evidence_type="deployment",
+                opportunity_id=opportunity.id,
+                site_id=site.id,
+                data={
+                    "build_status": "success",
+                    "build_output": build_output["output"][:1000],
+                    "deployment_adapter": deploy_result.get("adapter", "unknown"),
+                    "deployment_url": site.deploy_url,
+                    "health_check_status": "passed",
+                    "checked_timestamp": datetime.now().isoformat(),
+                }
+            ))
             
             opportunity.status = OpportunityStatus.DEPLOYED
             opportunity.site_id = site.id
@@ -397,6 +749,28 @@ class Constructor:
             
             build_time = (datetime.now() - start_time).total_seconds()
             
+            if site:
+                site.status = SiteStatus.FAILED
+                self.storage.save_site(site)
+                
+                self.storage.save_evidence(Evidence(
+                    evidence_type="deployment",
+                    opportunity_id=opportunity.id,
+                    site_id=site.id,
+                    data={
+                        "build_status": "failed",
+                        "error": str(e),
+                        "checked_timestamp": datetime.now().isoformat(),
+                    }
+                ))
+            
+            # Update opportunity to failed status
+            if opportunity.status == OpportunityStatus.BUILDING:
+                opportunity.status = OpportunityStatus.BUILD_FAILED
+            else:
+                opportunity.status = OpportunityStatus.DEPLOYMENT_FAILED
+            self.storage.save_opportunity(opportunity)
+            
             return BuildResult(
                 success=False,
                 site_id=site.id if site else "",
@@ -413,7 +787,7 @@ class Constructor:
         base_path = config.sites_dir / site.id
         base_path.mkdir(parents=True, exist_ok=True)
         
-        dirs = ["src", "src/app", "src/components", "src/lib", "src/adapters", "migrations"]
+        dirs = ["src", "src/app", "src/components", "src/lib", "src/adapters", "migrations", "public"]
         for d in dirs:
             (base_path / d).mkdir(parents=True, exist_ok=True)
         
@@ -426,9 +800,23 @@ class Constructor:
                 f.write(code)
         
         for name, code in templates.items():
-            template_path = base_path / "src/app" / (name + ".tsx")
-            with open(template_path, "w") as f:
-                f.write(code)
+            if name == "robots":
+                with open(base_path / "public" / "robots.txt", "w") as f:
+                    f.write(code)
+            elif name == "next-config":
+                with open(base_path / "next.config.js", "w") as f:
+                    f.write(code)
+            elif "/" in name:
+                # Nested app router paths like ev-charger-rebates/page.tsx
+                ext = ".ts" if name.endswith("/route") else ".tsx"
+                template_path = base_path / "src/app" / (name + ext)
+                template_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(template_path, "w") as f:
+                    f.write(code)
+            else:
+                template_path = base_path / "src/app" / (name + ".tsx")
+                with open(template_path, "w") as f:
+                    f.write(code)
         
         package_json = self._generate_package_json(site)
         with open(base_path / "package.json", "w") as f:
@@ -450,13 +838,52 @@ class Constructor:
                 "next": "^14.0.0",
                 "react": "^18.2.0",
                 "react-dom": "^18.2.0"
+            },
+            "devDependencies": {
+                "@types/node": "^20.0.0",
+                "@types/react": "^18.2.0",
+                "typescript": "^5.0.0"
             }
         }
     
+    async def _run_build(self, project_path: Path) -> Dict[str, Any]:
+        """Run npm install and npm build in the project directory."""
+        if config.is_demo:
+            return {"success": True, "output": "skipped in demo mode"}
+        
+        print("  Running npm install...")
+        install_result = subprocess.run(
+            ["npm", "install"],
+            cwd=project_path,
+            capture_output=True,
+            text=True,
+            timeout=120
+        )
+        
+        if install_result.returncode != 0:
+            return {
+                "success": False,
+                "output": install_result.stdout + install_result.stderr
+            }
+        
+        print("  Running npm run build...")
+        build_result = subprocess.run(
+            ["npm", "run", "build"],
+            cwd=project_path,
+            capture_output=True,
+            text=True,
+            timeout=300
+        )
+        
+        return {
+            "success": build_result.returncode == 0,
+            "output": build_result.stdout + build_result.stderr
+        }
+    
     async def _deploy(self, site: Site, project_path: Path) -> Dict[str, str]:
-        print("  Deploying to Cloudflare...")
-        domain = site.niche.replace("_", "-") + ".pages.dev"
-        return {"url": "https://" + domain, "project_id": site.id}
+        adapter = self._get_deployment_adapter()
+        print(f"  Deploying with {adapter.__class__.__name__}...")
+        return await adapter.deploy(site, project_path)
     
     async def build_queue(self) -> List[BuildResult]:
         opportunities = self.storage.get_opportunities_by_status(OpportunityStatus.VALIDATED)

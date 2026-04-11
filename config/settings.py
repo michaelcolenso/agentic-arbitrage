@@ -25,6 +25,14 @@ class DiscoveryConfig:
         "personalfinance", "smallbusiness", "realestateinvesting",
         "legaladvice", "government", "dataisbeautiful", "webdev"
     ])
+    ev_charger_subreddits: List[str] = field(default_factory=lambda: [
+        "evcharging", "electricvehicles", "TeslaLounge", "ModelY",
+        "volt", "AskElectricians", "homeowners"
+    ])
+    ev_charger_search_patterns: List[str] = field(default_factory=lambda: [
+        "EV charger rebate", "Level 2 charger rebate", "charger tax credit",
+        "8911", "30C", "utility rebate", "charger install cost", "qualifying census tract"
+    ])
     google_trends_geo: str = "US"
     data_gov_datasets: List[str] = field(default_factory=lambda: [
         "recalls", "patents", "clinical-trials", "contract-data",
@@ -43,6 +51,8 @@ class ValidationConfig:
     min_automation_score: float = 4.0  # More lenient
     min_monetization_score: float = 4.0  # More lenient
     validation_timeout_hours: int = 48
+    production_pass_threshold: float = 7.0
+    keyword_snapshot_path: Optional[str] = None
     affiliate_check_domains: List[str] = field(default_factory=lambda: [
         "amazon.com", "shareasale.com", "cj.com", "impact.com"
     ])
@@ -94,6 +104,26 @@ class FactoryConfig:
     build: BuildConfig = field(default_factory=BuildConfig)
     culling: CullingConfig = field(default_factory=CullingConfig)
     monetization: MonetizationConfig = field(default_factory=MonetizationConfig)
+    
+    # Runtime mode
+    @property
+    def factory_mode(self) -> str:
+        mode = os.getenv("FACTORY_MODE", "demo").lower().strip()
+        if mode not in ("demo", "staging", "production"):
+            mode = "demo"
+        return mode
+    
+    @property
+    def is_demo(self) -> bool:
+        return self.factory_mode == "demo"
+    
+    @property
+    def is_staging(self) -> bool:
+        return self.factory_mode == "staging"
+    
+    @property
+    def is_production(self) -> bool:
+        return self.factory_mode == "production"
     
     # API Keys (load from environment)
     @property
