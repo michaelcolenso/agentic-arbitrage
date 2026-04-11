@@ -75,8 +75,9 @@ def test_keyword_validator_loads_csv_snapshot(monkeypatch, tmp_path):
 
 
 def test_keyword_validator_empty_without_snapshot_in_non_demo(monkeypatch):
-    monkeypatch.setattr("config.settings.config.validation.keyword_snapshot_path", None)
     midwife_module = reload_midwife_module(monkeypatch, "staging")
+    import config.settings as settings_module
+    settings_module.config.validation.keyword_snapshot_path = None
     
     validator = midwife_module.KeywordValidator()
     opp = Opportunity(

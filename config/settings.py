@@ -52,7 +52,7 @@ class ValidationConfig:
     min_monetization_score: float = 4.0  # More lenient
     validation_timeout_hours: int = 48
     production_pass_threshold: float = 7.0
-    keyword_snapshot_path: Optional[str] = None
+    keyword_snapshot_path: Optional[str] = str(PROJECT_ROOT / "tests" / "fixtures" / "ev_charger_keyword_snapshot.csv")
     affiliate_check_domains: List[str] = field(default_factory=lambda: [
         "amazon.com", "shareasale.com", "cj.com", "impact.com"
     ])

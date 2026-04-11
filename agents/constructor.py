@@ -160,7 +160,10 @@ class ScrapingAdapterGenerator:
         class_name = self._to_pascal_case(data_source.name) + "Adapter"
         
         template = '''export class {class_name} {{
-  constructor(apiKey) {{
+  private baseUrl: string;
+  private apiKey: string;
+
+  constructor(apiKey: string) {{
     this.baseUrl = '{base_url}';
     this.apiKey = apiKey;
   }}
@@ -208,6 +211,8 @@ class ScrapingAdapterGenerator:
         class_name = self._to_pascal_case(data_source.name) + "Scraper"
         
         template = '''export class {class_name} {{
+  private baseUrl: string;
+
   constructor() {{
     this.baseUrl = '{base_url}';
   }}
@@ -445,30 +450,47 @@ export default function RebatesListPage() {{
 '''
     
     def _state_page(self) -> str:
-        return '''export default function StatePage({ params }) {
+        states = [
+            "alabama", "alaska", "arizona", "arkansas", "california", "colorado",
+            "connecticut", "delaware", "florida", "georgia", "hawaii", "idaho",
+            "illinois", "indiana", "iowa", "kansas", "kentucky", "louisiana",
+            "maine", "maryland", "massachusetts", "michigan", "minnesota",
+            "mississippi", "missouri", "montana", "nebraska", "nevada",
+            "new-hampshire", "new-jersey", "new-mexico", "new-york",
+            "north-carolina", "north-dakota", "ohio", "oklahoma", "oregon",
+            "pennsylvania", "rhode-island", "south-carolina", "south-dakota",
+            "tennessee", "texas", "utah", "vermont", "virginia", "washington",
+            "west-virginia", "wisconsin", "wyoming"
+        ]
+        state_params = ", ".join(f'{{ state: "{s}" }}' for s in states)
+        return f'''export default function StatePage({{ params }}: {{ params: {{ state: string }} }}) {{
   const state = params.state;
   const stateTitle = state.replace(/-/g, " ").replace(/\\b\\w/g, (l) => l.toUpperCase());
   return (
     <div>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
+        dangerouslySetInnerHTML={{{{
+          __html: JSON.stringify({{
             "@context": "https://schema.org",
             "@type": "GovernmentService",
-            name: `${stateTitle} EV Charger Rebates`,
+            name: `${{stateTitle}} EV Charger Rebates`,
             serviceType: "Rebate Program",
-            areaServed: { "@type": "State", name: stateTitle },
-          }),
-        }}
+            areaServed: {{ "@type": "State", name: stateTitle }},
+          }}),
+        }}}}
       />
-      <h1>{stateTitle} EV Charger Rebates</h1>
-      <p>State and utility rebates for {stateTitle} residents installing a Level 2 home EV charger.</p>
+      <h1>{{stateTitle}} EV Charger Rebates</h1>
+      <p>State and utility rebates for {{stateTitle}} residents installing a Level 2 home EV charger.</p>
       <p><a href="/ev-charger-tax-credit">→ Federal 30C tax credit details</a></p>
       <p><a href="/level-2-charger-rebate-checklist">→ Get your rebate checklist</a></p>
     </div>
   );
-}
+}}
+
+export function generateStaticParams() {{
+  return [{state_params}];
+}}
 '''
     
     def _tax_credit_page(self) -> str:
