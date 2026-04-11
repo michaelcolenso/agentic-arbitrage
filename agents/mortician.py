@@ -108,6 +108,9 @@ class TrafficMonitor:
         for site in sites:
             try:
                 metric = await self.get_metrics(site)
+                if metric is None:
+                    continue
+                
                 metrics[site.id] = metric
                 
                 # Save to storage

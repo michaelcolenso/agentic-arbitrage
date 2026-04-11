@@ -499,14 +499,16 @@ class KeywordValidator:
         results["total_volume"] = sum(k.monthly_volume for k in keywords)
         
         # Calculate opportunity score
-        difficulty_factor = max(0, (50 - results["avg_difficulty"]) / 50)
-        volume_factor = min(results["total_volume"] / 50000, 1.0)
+        # Use niche-appropriate volume baseline (5000 for targeted verticals)
+        volume_baseline = 5000
+        difficulty_factor = max(0, (60 - results["avg_difficulty"]) / 60)
+        volume_factor = min(results["total_volume"] / volume_baseline, 1.0)
         template_factor = len(results["template_keywords"]) / max(len(keywords), 1)
         
         results["opportunity_score"] = (
-            difficulty_factor * 0.4 +
-            volume_factor * 0.4 +
-            template_factor * 0.2
+            difficulty_factor * 0.35 +
+            volume_factor * 0.35 +
+            template_factor * 0.30
         ) * 10
         
         return results
@@ -515,7 +517,9 @@ class KeywordValidator:
         """Check if keyword is a template opportunity"""
         template_patterns = [
             " in ", " near ", " by ", " for ", " vs ", " vs. ",
-            "best ", "top ", "compare ", "comparison"
+            "best ", "top ", "compare ", "comparison",
+            "database", "list", "guide", "how to", "rebates by",
+            "charger in", "install cost", "tax credit",
         ]
         return any(pattern in keyword.lower() for pattern in template_patterns)
 
@@ -672,8 +676,13 @@ class Midwife:
         if monetization.score < cfg.min_monetization_score:
             return False
         
-        # Use stricter threshold in production
-        min_score = cfg.production_pass_threshold if config.is_production else 5.0
+        # Use stricter threshold in production; more lenient in staging/demo
+        if config.is_production:
+            min_score = cfg.production_pass_threshold
+        elif config.is_staging:
+            min_score = 4.0
+        else:
+            min_score = 5.0
         if overall_score < min_score:
             return False
         

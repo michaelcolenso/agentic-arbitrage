@@ -5,7 +5,7 @@ Detects "pain-point pivots" — moments when user frustration correlates with
 data availability but precedes commercial solution.
 """
 import asyncio
-import aiohttp
+from scrapling import AsyncFetcher
 # import praw  # Using web scraping instead
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
@@ -67,17 +67,13 @@ class RedditMonitor:
     ]
     
     def __init__(self):
-        self.session: Optional[aiohttp.ClientSession] = None
+        self.fetcher: Optional[AsyncFetcher] = None
         self._seen_hashes: set = set()
     
-    async def _get_session(self) -> aiohttp.ClientSession:
-        if self.session is None or self.session.closed:
-            self.session = aiohttp.ClientSession(
-                headers={
-                    "User-Agent": "Mozilla/5.0 (compatible; AgenticArbitrageFactory/1.0; +https://example.com/bot)"
-                }
-            )
-        return self.session
+    def _get_fetcher(self) -> AsyncFetcher:
+        if self.fetcher is None:
+            self.fetcher = AsyncFetcher()
+        return self.fetcher
     
     def _hash_pain(self, url: str, text: str) -> str:
         import hashlib
@@ -89,17 +85,18 @@ class RedditMonitor:
         subreddits = subreddits or config.discovery.reddit_subreddits
         pain_points = []
         
-        session = await self._get_session()
+        fetcher = self._get_fetcher()
         
         for subreddit_name in subreddits:
             try:
                 for listing in ["hot", "new"]:
                     url = f"https://www.reddit.com/r/{subreddit_name}/{listing}.json"
-                    async with session.get(url, params={"limit": 50}) as resp:
-                        if resp.status != 200:
-                            print(f"  Reddit r/{subreddit_name}/{listing} returned {resp.status}")
+                    try:
+                        page = await fetcher.get(url, params={"limit": 50})
+                        if page.status != 200:
+                            print(f"  Reddit r/{subreddit_name}/{listing} returned {page.status}")
                             continue
-                        data = await resp.json()
+                        data = page.json()
                         posts = data.get("data", {}).get("children", [])
                         
                         for post_wrapper in posts:
@@ -107,6 +104,8 @@ class RedditMonitor:
                             pain = self._analyze_post(subreddit_name, post)
                             if pain and self._dedupe(pain):
                                 pain_points.append(pain)
+                    except Exception as e:
+                        print(f"  Reddit r/{subreddit_name}/{listing} error: {e}")
                     
                     # Rate limiting: sleep briefly between requests
                     await asyncio.sleep(0.5)
@@ -121,6 +120,34 @@ class RedditMonitor:
             for p in mock_points:
                 if self._dedupe(p):
                     pain_points.append(p)
+        
+        return pain_points
+    
+    async def search_subreddits(self, subreddits: List[str], queries: List[str]) -> List[PainPoint]:
+        """Search subreddits for specific queries using Reddit's search API"""
+        pain_points = []
+        fetcher = self._get_fetcher()
+        
+        for subreddit_name in subreddits:
+            for query in queries:
+                try:
+                    url = f"https://www.reddit.com/r/{subreddit_name}/search.json"
+                    params = {"q": query, "limit": 25, "sort": "relevance", "restrict_sr": "on"}
+                    page = await fetcher.get(url, params=params)
+                    if page.status != 200:
+                        continue
+                    data = page.json()
+                    posts = data.get("data", {}).get("children", [])
+                    
+                    for post_wrapper in posts:
+                        post = post_wrapper.get("data", {})
+                        pain = self._analyze_post(subreddit_name, post)
+                        if pain and self._dedupe(pain):
+                            pain_points.append(pain)
+                    
+                    await asyncio.sleep(0.5)
+                except Exception:
+                    continue
         
         return pain_points
     
@@ -264,23 +291,22 @@ class DataGovMonitor:
     
     async def get_recent_datasets(self, days: int = 7) -> List[DataSource]:
         """Get recently added datasets from data.gov"""
-        async with aiohttp.ClientSession() as session:
-            try:
-                # Search for recent datasets
-                params = {
-                    "sort": "score desc",
-                    "rows": 50,
-                    "start": 0
-                }
-                async with session.get(
-                    f"{self.DATA_GOV_BASE}/action/package_search", 
-                    params=params
-                ) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        return self._parse_datasets(data)
-            except Exception as e:
-                print(f"Error fetching data.gov: {e}")
+        try:
+            fetcher = AsyncFetcher()
+            params = {
+                "sort": "score desc",
+                "rows": 50,
+                "start": 0
+            }
+            page = await fetcher.get(
+                f"{self.DATA_GOV_BASE}/action/package_search",
+                params=params
+            )
+            if page.status == 200:
+                data = page.json()
+                return self._parse_datasets(data)
+        except Exception as e:
+            print(f"Error fetching data.gov: {e}")
         
         if config.is_production:
             raise RuntimeError(
@@ -551,12 +577,23 @@ class RedQueen:
         print("🎯 Red Queen: Starting discovery cycle...")
         
         # Gather inputs in parallel
-        pain_points_task = self.reddit_monitor.scan_subreddits()
+        # For EV charger MVP, scan both default and EV-specific subreddits,
+        # plus targeted search in EV communities
+        all_subreddits = list(set(
+            config.discovery.reddit_subreddits + config.discovery.ev_charger_subreddits
+        ))
+        scan_task = self.reddit_monitor.scan_subreddits(all_subreddits)
+        search_task = self.reddit_monitor.search_subreddits(
+            config.discovery.ev_charger_subreddits,
+            config.discovery.ev_charger_search_patterns
+        )
         datasets_task = self.data_gov_monitor.get_recent_datasets()
         
-        pain_points, datasets = await asyncio.gather(
-            pain_points_task, datasets_task
+        scan_pain_points, search_pain_points, datasets = await asyncio.gather(
+            scan_task, search_task, datasets_task
         )
+        
+        pain_points = scan_pain_points + search_pain_points
         
         print(f"  Found {len(pain_points)} pain points")
         print(f"  Found {len(datasets)} data sources")
