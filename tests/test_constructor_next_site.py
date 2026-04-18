@@ -5,7 +5,7 @@ import pytest
 from datetime import datetime
 from pathlib import Path
 
-from agents.constructor import Constructor, EVChargerTemplateGenerator
+from agents.constructor import Constructor, EVChargerTemplateGenerator, TemplateGenerator
 from core.models import Opportunity, SiteStatus, OpportunityStatus
 from core.storage import Storage
 
@@ -57,6 +57,39 @@ def test_ev_templates_include_deadline_language():
     checklist = templates["level-2-charger-rebate-checklist/page"]
     assert "ZIP" in checklist or "zip" in checklist.lower()
     assert "email" in checklist.lower()
+
+
+def test_generic_template_generator_creates_standalone_app_router_pages():
+    opportunity = Opportunity(
+        niche="about_charging",
+        description="Charging guide database",
+        status=OpportunityStatus.VALIDATED,
+        pain_velocity=6.0,
+        competition_gap=0.5,
+        data_availability_score=6.0,
+        pain_points=[],
+        data_sources=[],
+        keywords=[],
+    )
+
+    templates = TemplateGenerator().generate(opportunity)
+
+    assert "layout" in templates
+    assert "page" in templates
+    assert "about-charging/page" in templates
+    assert "compare/page" in templates
+    assert "robots" in templates
+    assert "next-config" in templates
+
+    all_code = "\n".join(templates.values())
+    assert "<Layout" not in all_code
+    assert "<Hero" not in all_code
+    assert "<Stats" not in all_code
+    assert "<FeaturedList" not in all_code
+    assert "<FilterBar" not in all_code
+    assert "<EntityList" not in all_code
+    assert "<EntityDetail" not in all_code
+    assert "<CompareTable" not in all_code
 
 
 @pytest.mark.asyncio

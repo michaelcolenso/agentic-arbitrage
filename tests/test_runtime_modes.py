@@ -13,6 +13,7 @@ from core.models import OpportunityStatus
 
 def reload_settings(monkeypatch):
     """Reload settings module to pick up env changes."""
+    monkeypatch.setenv("FACTORY_ENV_FILE", os.devnull)
     return importlib.reload(settings_module)
 
 
@@ -82,6 +83,21 @@ class TestFactoryModeCLI:
 
 class TestProductionRequirements:
     """Tests for production mode fail-closed behavior."""
+
+    def test_project_dotenv_can_supply_production_credentials(self, monkeypatch, tmp_path):
+        monkeypatch.delenv("CLOUDFLARE_API_TOKEN", raising=False)
+        monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+        env_file = tmp_path / ".env"
+        env_file.write_text(
+            "CLOUDFLARE_API_TOKEN=cloudflare_from_dotenv\n"
+            "GITHUB_TOKEN=github_from_dotenv\n"
+        )
+
+        settings = reload_settings(monkeypatch)
+        settings.load_project_env(env_file=env_file)
+
+        assert settings.config.cloudflare_api_token == "cloudflare_from_dotenv"
+        assert settings.config.github_token == "github_from_dotenv"
 
     def test_production_requires_cloudflare_token(self, monkeypatch):
         monkeypatch.setenv("FACTORY_MODE", "production")

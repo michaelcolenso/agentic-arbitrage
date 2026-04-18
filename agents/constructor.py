@@ -255,86 +255,151 @@ class TemplateGenerator:
         templates = {}
         niche_title = opportunity.niche.replace("_", " ").title()
         niche_lower = opportunity.niche.replace("_", " ").lower()
+        niche_slug = opportunity.niche.replace("_", "-")
         
-        templates["home"] = self._generate_home_template(niche_title, niche_lower)
-        templates["list"] = self._generate_list_template(niche_title, niche_lower)
-        templates["detail"] = self._generate_detail_template(niche_title, niche_lower)
-        templates["compare"] = self._generate_compare_template(niche_title, niche_lower)
+        templates["layout"] = self._generate_layout_template(niche_title, niche_lower, niche_slug)
+        templates["page"] = self._generate_home_template(niche_title, niche_lower, niche_slug)
+        templates[f"{niche_slug}/page"] = self._generate_list_template(niche_title, niche_lower)
+        templates["compare/page"] = self._generate_compare_template(niche_title, niche_lower)
+        templates["robots"] = self._robots()
+        templates["sitemap"] = self._sitemap(niche_title, niche_slug)
+        templates["next-config"] = self._next_config()
         
         return templates
     
-    def _generate_home_template(self, niche_title: str, niche_lower: str) -> str:
-        return f'''export default function Home({{ stats, featured }}) {{
+    def _generate_layout_template(self, niche_title: str, niche_lower: str, niche_slug: str) -> str:
+        return f'''export const metadata = {{
+  title: {{
+    default: "{niche_title} Database",
+    template: "%s | {niche_title} Database",
+  }},
+  description: "Search, compare, and track {niche_lower} from public sources.",
+}};
+
+export default function RootLayout({{ children }}) {{
   return (
-    <Layout
-      title="{niche_title} Database | Find & Compare"
-      description="Comprehensive database of {niche_lower}. Search, filter, and compare."
-    >
-      <Hero
-        title="Find the Best {niche_title}"
-        subtitle="Search thousands of {niche_lower} in our database"
-      />
-      <Stats stats={{stats}} />
-      <FeaturedList items={{featured}} />
-    </Layout>
+    <html lang="en">
+      <body style={{{{ fontFamily: "system-ui, sans-serif", margin: 0, padding: 0 }}}}>
+        <header style={{{{ padding: "1rem", borderBottom: "1px solid #eee" }}}}>
+          <nav>
+            <a href="/" style={{{{ marginRight: "1rem" }}}}>Home</a>
+            <a href="/{niche_slug}" style={{{{ marginRight: "1rem" }}}}>Browse</a>
+            <a href="/compare">Compare</a>
+          </nav>
+        </header>
+        <main style={{{{ padding: "1rem" }}}}>{{children}}</main>
+        <footer style={{{{ padding: "1rem", borderTop: "1px solid #eee", marginTop: "2rem" }}}}>
+          <p>© {{new Date().getFullYear()}} {niche_title} Database</p>
+        </footer>
+      </body>
+    </html>
   );
 }}
+'''
+    
+    def _generate_home_template(self, niche_title: str, niche_lower: str, niche_slug: str) -> str:
+        return f'''import Link from "next/link";
 
-export async function getStaticProps() {{
-  const [stats, featured] = await Promise.all([
-    getStats(),
-    getFeatured(6),
-  ]);
-  return {{ props: {{ stats, featured }}, revalidate: 3600 }};
+export default function HomePage() {{
+  return (
+    <div>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{{{
+          __html: JSON.stringify({{
+            "@context": "https://schema.org",
+            "@type": "WebSite",
+            name: "{niche_title} Database",
+            url: "/",
+          }}),
+        }}}}
+      />
+      <h1>{niche_title} Database</h1>
+      <p>Search, compare, and track {niche_lower} from public sources.</p>
+      <section style={{{{ marginTop: "1.5rem" }}}}>
+        <h2>Start Here</h2>
+        <ul>
+          <li><Link href="/{niche_slug}">Browse all {niche_lower}</Link></li>
+          <li><Link href="/compare">Compare {niche_lower}</Link></li>
+        </ul>
+      </section>
+    </div>
+  );
 }}
 '''
     
     def _generate_list_template(self, niche_title: str, niche_lower: str) -> str:
-        return f'''export default function ListPage({{ entities, filters }}) {{
+        return f'''const sampleItems = [
+  {{ name: "{niche_title} Example 1", description: "Representative listing from public source data." }},
+  {{ name: "{niche_title} Example 2", description: "Use this page as the generated directory shell." }},
+  {{ name: "{niche_title} Example 3", description: "Replace sample rows when a scraper adapter imports records." }},
+];
+
+export default function ListPage() {{
   return (
-    <Layout
-      title="All {niche_title} - Complete Database"
-      description="Browse our complete database of {niche_lower}."
-    >
-      <div className="container">
-        <h1>All {niche_title}</h1>
-        <FilterBar filters={{filters}} />
-        <EntityList entities={{entities}} />
-      </div>
-    </Layout>
+    <div>
+      <h1>All {niche_title}</h1>
+      <p>Browse the generated directory for {niche_lower}.</p>
+      <ul>
+        {{sampleItems.map((item) => (
+          <li key={{item.name}} style={{{{ marginBottom: "1rem" }}}}>
+            <strong>{{item.name}}</strong>
+            <p>{{item.description}}</p>
+          </li>
+        ))}}
+      </ul>
+    </div>
   );
 }}
-'''
-    
-    def _generate_detail_template(self, niche_title: str, niche_lower: str) -> str:
-        return '''export default function DetailPage({ entity }) {
-  return (
-    <Layout
-      title={`${entity.name} - ''' + niche_title + ''' Details`}
-      description={entity.description}
-    >
-      <div className="container">
-        <EntityDetail entity={entity} />
-      </div>
-    </Layout>
-  );
-}
 '''
     
     def _generate_compare_template(self, niche_title: str, niche_lower: str) -> str:
-        return f'''export default function ComparePage({{ entities }}) {{
+        return f'''const comparisonRows = [
+  {{ label: "Coverage", value: "Public source directory" }},
+  {{ label: "Update model", value: "Generated adapter import" }},
+  {{ label: "Best for", value: "Finding and comparing {niche_lower}" }},
+];
+
+export default function ComparePage() {{
   return (
-    <Layout
-      title="Compare {niche_title} Side by Side"
-      description="Compare {niche_lower} side by side."
-    >
-      <div className="container">
-        <h1>Compare {niche_title}</h1>
-        <CompareTable entities={{entities}} />
-      </div>
-    </Layout>
+    <div>
+      <h1>Compare {niche_title}</h1>
+      <p>Use this generated comparison page to evaluate {niche_lower} side by side.</p>
+      <table>
+        <tbody>
+          {{comparisonRows.map((row) => (
+            <tr key={{row.label}}>
+              <th style={{{{ textAlign: "left", paddingRight: "1rem" }}}}>{{row.label}}</th>
+              <td>{{row.value}}</td>
+            </tr>
+          ))}}
+        </tbody>
+      </table>
+    </div>
   );
 }}
+'''
+
+    def _robots(self) -> str:
+        return "User-agent: *\\nAllow: /\\n\\nSitemap: /sitemap.xml\\n"
+    
+    def _sitemap(self, niche_title: str, niche_slug: str) -> str:
+        return f'''export default function sitemap() {{
+  const base = "https://example.com";
+  return ["", "/{niche_slug}", "/compare"].map((route) => ({{
+    url: `${{base}}${{route}}`,
+    lastModified: new Date(),
+  }}));
+}}
+'''
+    
+    def _next_config(self) -> str:
+        return '''/** @type {import('next').NextConfig} */
+const nextConfig = {
+  output: 'export',
+  distDir: 'dist',
+};
+module.exports = nextConfig;
 '''
 
 

@@ -5,9 +5,21 @@ import os
 from dataclasses import dataclass, field
 from typing import List, Dict, Any
 from pathlib import Path
+from dotenv import load_dotenv
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+def load_project_env(project_root: Path = PROJECT_ROOT, env_file: Path | None = None) -> None:
+    """Load project .env values without overriding explicit environment vars."""
+    env_path = env_file or Path(
+        os.getenv("FACTORY_ENV_FILE", str(project_root / ".env"))
+    ).expanduser()
+    load_dotenv(env_path, override=False)
+
+
+load_project_env()
 
 
 def get_default_data_dir() -> Path:
