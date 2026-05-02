@@ -35,8 +35,23 @@ class PainPivot:
 
 
 class RedditMonitor:
-    """Monitors Reddit for pain points and complaints via public JSON API"""
-    
+    """Monitors Reddit for pain points and complaints.
+
+    Reddit's www.reddit.com endpoints (JSON and RSS) reliably 403 from
+    datacenter IPs regardless of User-Agent. Strategy, in priority order:
+
+    1. Pushshift-style community mirrors (pullpush.io, arctic-shift) — return
+       Reddit's native post shape via unauthenticated archive APIs.
+    2. www.reddit.com /<sub>/<listing>.json — kept as a last resort for
+       environments where Reddit isn't IP-blocking the caller.
+    3. Mock seed pain points (demo/staging only).
+    """
+
+    PUSHSHIFT_MIRRORS = [
+        "https://arctic-shift.photon-reddit.com/api/posts/search",
+        "https://api.pullpush.io/reddit/search/submission",
+    ]
+
     PAIN_PATTERNS = [
         r"hard to find",
         r"difficult to locate",
@@ -85,44 +100,83 @@ class RedditMonitor:
         return hashlib.md5(normalized.encode()).hexdigest()
     
     async def scan_subreddits(self, subreddits: List[str] = None) -> List[PainPoint]:
-        """Scan subreddits for pain points using Reddit's public JSON API"""
+        """Scan subreddits for pain points across multiple unauthenticated sources."""
         subreddits = subreddits or config.discovery.reddit_subreddits
-        pain_points = []
-        
+        pain_points: List[PainPoint] = []
+
         session = await self._get_session()
-        
+
         for subreddit_name in subreddits:
-            try:
-                for listing in ["hot", "new"]:
-                    url = f"https://www.reddit.com/r/{subreddit_name}/{listing}.json"
-                    async with session.get(url, params={"limit": 50}) as resp:
-                        if resp.status != 200:
-                            print(f"  Reddit r/{subreddit_name}/{listing} returned {resp.status}")
-                            continue
-                        data = await resp.json()
-                        posts = data.get("data", {}).get("children", [])
-                        
-                        for post_wrapper in posts:
-                            post = post_wrapper.get("data", {})
-                            pain = self._analyze_post(subreddit_name, post)
-                            if pain and self._dedupe(pain):
-                                pain_points.append(pain)
-                    
-                    # Rate limiting: sleep briefly between requests
-                    await asyncio.sleep(0.5)
-                    
-            except Exception as e:
-                print(f"Error scanning r/{subreddit_name}: {e}")
-                continue
-        
+            posts = await self._fetch_subreddit_posts(session, subreddit_name)
+            for post in posts:
+                pain = self._analyze_post(subreddit_name, post)
+                if pain and self._dedupe(pain):
+                    pain_points.append(pain)
+
         if not pain_points and not config.is_production:
-            # Fallback to mock data in demo/staging only if no real data found
             mock_points = self._get_mock_pain_points()
             for p in mock_points:
                 if self._dedupe(p):
                     pain_points.append(p)
-        
+
         return pain_points
+
+    async def _fetch_subreddit_posts(
+        self, session: aiohttp.ClientSession, subreddit_name: str
+    ) -> List[Dict[str, Any]]:
+        """Fetch posts for one subreddit, trying each source until one yields data."""
+        for mirror in self.PUSHSHIFT_MIRRORS:
+            posts = await self._fetch_via_pushshift(session, mirror, subreddit_name)
+            if posts:
+                print(f"  r/{subreddit_name}: {len(posts)} posts via {mirror.split('/')[2]}")
+                return posts
+
+        # Last resort: official Reddit (likely 403 from datacenter IPs)
+        posts = await self._fetch_via_reddit(session, subreddit_name)
+        if posts:
+            print(f"  r/{subreddit_name}: {len(posts)} posts via www.reddit.com")
+        return posts
+
+    async def _fetch_via_pushshift(
+        self, session: aiohttp.ClientSession, base_url: str, subreddit_name: str
+    ) -> List[Dict[str, Any]]:
+        """Fetch recent submissions from a Pushshift-compatible mirror."""
+        # arctic-shift expects `limit`, pullpush expects `size`; both default to recent-first.
+        if "arctic-shift" in base_url:
+            params = {"subreddit": subreddit_name, "limit": 100, "sort": "desc"}
+        else:
+            params = {"subreddit": subreddit_name, "size": 100, "sort": "desc"}
+        try:
+            async with session.get(base_url, params=params, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                if resp.status != 200:
+                    print(f"  {base_url.split('/')[2]} r/{subreddit_name} returned {resp.status}")
+                    return []
+                payload = await resp.json()
+            await asyncio.sleep(0.5)
+            return payload.get("data", []) or []
+        except Exception as e:
+            print(f"  {base_url.split('/')[2]} r/{subreddit_name} error: {e}")
+            return []
+
+    async def _fetch_via_reddit(
+        self, session: aiohttp.ClientSession, subreddit_name: str
+    ) -> List[Dict[str, Any]]:
+        """Fallback: hit www.reddit.com directly. Often 403s from cloud IPs."""
+        collected: List[Dict[str, Any]] = []
+        for listing in ["hot", "new"]:
+            url = f"https://www.reddit.com/r/{subreddit_name}/{listing}.json"
+            try:
+                async with session.get(url, params={"limit": 50}, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                    if resp.status != 200:
+                        print(f"  www.reddit.com r/{subreddit_name}/{listing} returned {resp.status}")
+                        continue
+                    data = await resp.json()
+                    for post_wrapper in data.get("data", {}).get("children", []):
+                        collected.append(post_wrapper.get("data", {}))
+                await asyncio.sleep(0.5)
+            except Exception as e:
+                print(f"  www.reddit.com r/{subreddit_name}/{listing} error: {e}")
+        return collected
     
     def _dedupe(self, pain: PainPoint) -> bool:
         h = self._hash_pain(pain.url, pain.text)
