@@ -81,8 +81,22 @@ async def main() -> None:
             print(f"  {n:>3}  {key}")
 
     section("PAIN POINTS → THEMES → PIVOTS")
-    pain_points = await monitor.scan_subreddits()
-    print(f"\n  total pain points after scan_subreddits(): {len(pain_points)}")
+    # Build pain points from the already-fetched posts so this section is
+    # consistent with the per-subreddit match report above. Calling
+    # monitor.scan_subreddits() here would trigger a second network fetch
+    # whose snapshot may differ from the first.
+    pain_points = []
+    for sub, posts in raw_by_sub.items():
+        for post in posts:
+            pain = monitor._analyze_post(sub, post)
+            if pain and monitor._dedupe(pain):
+                pain_points.append(pain)
+    if not pain_points and not config.is_production:
+        for p in monitor._get_mock_pain_points():
+            if monitor._dedupe(p):
+                pain_points.append(p)
+
+    print(f"\n  total pain points (from cached fetch): {len(pain_points)}")
     for p in pain_points:
         print(f"    • src={p.source} eng={p.engagement} sentiment={p.sentiment_score:+.2f}")
         print(f"      keywords={p.keywords}")
