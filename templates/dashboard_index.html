@@ -1,0 +1,279 @@
+{% extends "dashboard_base.html" %}
+{% block title %}Dashboard - Agentic Arbitrage Factory{% endblock %}
+{% block content %}
+
+<!-- Header -->
+<div class="mb-8">
+    <h2 class="text-2xl font-bold text-white">Dashboard Overview</h2>
+    <p class="text-slate-400 mt-1">Real-time view of your autonomous SEO portfolio</p>
+</div>
+
+<!-- Stats Grid -->
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+    <div class="glass rounded-xl p-5 border border-slate-800 card-hover">
+        <div class="flex items-center justify-between">
+            <div>
+                <p class="text-sm text-slate-400">Opportunities</p>
+                <p class="text-2xl font-bold text-white mt-1">{{ stats.total_opportunities }}</p>
+            </div>
+            <div class="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
+                <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+            </div>
+        </div>
+        <div class="mt-3 text-xs text-slate-500">
+            {{ opp_statuses.get('deployed', 0) + opp_statuses.get('winner', 0) }} deployed
+        </div>
+    </div>
+
+    <div class="glass rounded-xl p-5 border border-slate-800 card-hover">
+        <div class="flex items-center justify-between">
+            <div>
+                <p class="text-sm text-slate-400">Active Sites</p>
+                <p class="text-2xl font-bold text-white mt-1">{{ stats.active_sites }}</p>
+            </div>
+            <div class="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"/></svg>
+            </div>
+        </div>
+        <div class="mt-3 text-xs text-slate-500">
+            {{ site_statuses.get('deployed', 0) }} deployed
+        </div>
+    </div>
+
+    <div class="glass rounded-xl p-5 border border-slate-800 card-hover">
+        <div class="flex items-center justify-between">
+            <div>
+                <p class="text-sm text-slate-400">Winners</p>
+                <p class="text-2xl font-bold text-white mt-1">{{ stats.winner_sites }}</p>
+            </div>
+            <div class="w-10 h-10 rounded-lg bg-amber-500/10 flex items-center justify-center">
+                <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"/></svg>
+            </div>
+        </div>
+        <div class="mt-3 text-xs text-slate-500">
+            {{ "%.1f"|format(stats.success_rate) }}% success rate
+        </div>
+    </div>
+
+    <div class="glass rounded-xl p-5 border border-slate-800 card-hover">
+        <div class="flex items-center justify-between">
+            <div>
+                <p class="text-sm text-slate-400">Portfolio Value</p>
+                <p class="text-2xl font-bold text-white mt-1">${{ "{:,.0f}".format(stats.portfolio_value) }}</p>
+            </div>
+            <div class="w-10 h-10 rounded-lg bg-purple-500/10 flex items-center justify-center">
+                <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            </div>
+        </div>
+        <div class="mt-3 text-xs text-slate-500">
+            ${{ "{:,.2f}".format(stats.total_mrr) }} MRR
+        </div>
+    </div>
+</div>
+
+<!-- Charts Row -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+    <!-- Funnel Chart -->
+    <div class="glass rounded-xl p-6 border border-slate-800">
+        <h3 class="text-lg font-semibold text-white mb-4">Opportunity Funnel</h3>
+        <div class="h-64">
+            <canvas id="funnelChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Traffic Chart -->
+    <div class="glass rounded-xl p-6 border border-slate-800">
+        <h3 class="text-lg font-semibold text-white mb-4">Site Traffic</h3>
+        {% if site_metrics_chart %}
+        <div class="h-64">
+            <canvas id="trafficChart"></canvas>
+        </div>
+        {% else %}
+        <div class="h-64 flex items-center justify-center text-slate-500 text-sm">
+            No traffic data available yet
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Status Distribution -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+    <div class="glass rounded-xl p-6 border border-slate-800">
+        <h3 class="text-lg font-semibold text-white mb-4">Opportunities by Status</h3>
+        <div class="space-y-2">
+            {% for status, count in opp_statuses.items()|sort %}
+            <div class="flex items-center justify-between p-2 rounded-lg hover:bg-slate-800/50">
+                <div class="flex items-center gap-3">
+                    <span class="px-2.5 py-1 rounded-full text-xs font-medium {{ status_color(status) }}">
+                        {{ status }}
+                    </span>
+                </div>
+                <span class="text-white font-semibold">{{ count }}</span>
+            </div>
+            {% else %}
+            <p class="text-slate-500 text-sm">No opportunities yet</p>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="glass rounded-xl p-6 border border-slate-800">
+        <h3 class="text-lg font-semibold text-white mb-4">Sites by Status</h3>
+        <div class="space-y-2">
+            {% for status, count in site_statuses.items()|sort %}
+            <div class="flex items-center justify-between p-2 rounded-lg hover:bg-slate-800/50">
+                <div class="flex items-center gap-3">
+                    <span class="px-2.5 py-1 rounded-full text-xs font-medium {{ status_color(status) }}">
+                        {{ status }}
+                    </span>
+                </div>
+                <span class="text-white font-semibold">{{ count }}</span>
+            </div>
+            {% else %}
+            <p class="text-slate-500 text-sm">No sites yet</p>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- Recent Tables -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <!-- Recent Opportunities -->
+    <div class="glass rounded-xl border border-slate-800 overflow-hidden">
+        <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
+            <h3 class="text-lg font-semibold text-white">Recent Opportunities</h3>
+            <a href="/opportunities" class="text-sm text-blue-400 hover:text-blue-300">View all →</a>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm text-left">
+                <thead class="text-xs text-slate-400 uppercase bg-slate-900/50">
+                    <tr>
+                        <th class="px-6 py-3">Niche</th>
+                        <th class="px-6 py-3">Status</th>
+                        <th class="px-6 py-3 text-right">Score</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-800">
+                    {% for opp in recent_opportunities[:5] %}
+                    <tr class="hover:bg-slate-800/30">
+                        <td class="px-6 py-3 font-medium text-white">{{ opp.niche }}</td>
+                        <td class="px-6 py-3">
+                            <span class="px-2 py-1 rounded-full text-xs font-medium {{ status_color(opp.status.value) }}">
+                                {{ opp.status.value }}
+                            </span>
+                        </td>
+                        <td class="px-6 py-3 text-right text-slate-300">{{ "%.1f"|format(opp.validation_score) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Recent Sites -->
+    <div class="glass rounded-xl border border-slate-800 overflow-hidden">
+        <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
+            <h3 class="text-lg font-semibold text-white">Recent Sites</h3>
+            <a href="/sites" class="text-sm text-blue-400 hover:text-blue-300">View all →</a>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm text-left">
+                <thead class="text-xs text-slate-400 uppercase bg-slate-900/50">
+                    <tr>
+                        <th class="px-6 py-3">Name</th>
+                        <th class="px-6 py-3">Status</th>
+                        <th class="px-6 py-3 text-right">Pages</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-800">
+                    {% for site in recent_sites[:5] %}
+                    <tr class="hover:bg-slate-800/30">
+                        <td class="px-6 py-3 font-medium text-white">
+                            <a href="/sites/{{ site.id }}" class="hover:text-blue-400 transition-colors">{{ site.name }}</a>
+                        </td>
+                        <td class="px-6 py-3">
+                            <span class="px-2 py-1 rounded-full text-xs font-medium {{ status_color(site.status.value) }}">
+                                {{ site.status.value }}
+                            </span>
+                        </td>
+                        <td class="px-6 py-3 text-right text-slate-300">{{ site.page_count }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Scripts -->
+<script>
+    // Funnel Chart
+    const funnelCtx = document.getElementById('funnelChart').getContext('2d');
+    new Chart(funnelCtx, {
+        type: 'bar',
+        data: {
+            labels: ['Discovered', 'Validated', 'Deployed', 'Winners'],
+            datasets: [{
+                label: 'Count',
+                data: [{{ funnel.discovered }}, {{ funnel.validated }}, {{ funnel.deployed }}, {{ funnel.winner }}],
+                backgroundColor: ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b'],
+                borderRadius: 6,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: { color: '#64748b', stepSize: 1 },
+                    grid: { color: '#1e293b' }
+                },
+                x: {
+                    ticks: { color: '#94a3b8' },
+                    grid: { display: false }
+                }
+            }
+        }
+    });
+
+    // Traffic Chart
+    {% if site_metrics_chart %}
+    const trafficCtx = document.getElementById('trafficChart').getContext('2d');
+    new Chart(trafficCtx, {
+        type: 'line',
+        data: {
+            labels: {{ site_metrics_chart[0].dates | tojson }},
+            datasets: [
+                {% for site_chart in site_metrics_chart %}
+                {
+                    label: '{{ site_chart.name }}',
+                    data: {{ site_chart.organic | tojson }},
+                    borderColor: ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444'][{{ loop.index0 }} % 5],
+                    backgroundColor: 'transparent',
+                    tension: 0.3,
+                },
+                {% endfor %}
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { labels: { color: '#94a3b8' } } },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: { color: '#64748b' },
+                    grid: { color: '#1e293b' }
+                },
+                x: {
+                    ticks: { color: '#64748b' },
+                    grid: { color: '#1e293b' }
+                }
+            }
+        }
+    });
+    {% endif %}
+</script>
+
+{% endblock %}

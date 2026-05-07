@@ -1,0 +1,100 @@
+{% extends "dashboard_base.html" %}
+{% block title %}Opportunities - Agentic Arbitrage Factory{% endblock %}
+{% block content %}
+
+<div class="mb-8">
+    <h2 class="text-2xl font-bold text-white">Opportunities</h2>
+    <p class="text-slate-400 mt-1">All discovered and validated niche opportunities</p>
+</div>
+
+<div class="glass rounded-xl border border-slate-800 overflow-hidden">
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm text-left" id="opportunitiesTable">
+            <thead class="text-xs text-slate-400 uppercase bg-slate-900/50">
+                <tr>
+                    <th class="px-6 py-4 cursor-pointer hover:text-white" onclick="sortTable(0)">Niche ↕</th>
+                    <th class="px-6 py-4 cursor-pointer hover:text-white" onclick="sortTable(1)">Status ↕</th>
+                    <th class="px-6 py-4 cursor-pointer hover:text-white text-right" onclick="sortTable(2)">Pain Velocity ↕</th>
+                    <th class="px-6 py-4 cursor-pointer hover:text-white text-right" onclick="sortTable(3)">Competition Gap ↕</th>
+                    <th class="px-6 py-4 cursor-pointer hover:text-white text-right" onclick="sortTable(4)">Validation Score ↕</th>
+                    <th class="px-6 py-4 cursor-pointer hover:text-white" onclick="sortTable(5)">Created ↕</th>
+                    <th class="px-6 py-4">Site</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800">
+                {% for opp in opportunities %}
+                <tr class="hover:bg-slate-800/30 transition-colors">
+                    <td class="px-6 py-4 font-medium text-white">{{ opp.niche }}</td>
+                    <td class="px-6 py-4">
+                        <span class="px-2.5 py-1 rounded-full text-xs font-medium {{ status_color(opp.status.value) }}">
+                            {{ opp.status.value }}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 text-right text-slate-300">{{ "%.1f"|format(opp.pain_velocity) }}</td>
+                    <td class="px-6 py-4 text-right text-slate-300">{{ "%.2f"|format(opp.competition_gap) }}</td>
+                    <td class="px-6 py-4 text-right text-slate-300">{{ "%.1f"|format(opp.validation_score) }}</td>
+                    <td class="px-6 py-4 text-slate-400">{{ opp.created_at.strftime('%Y-%m-%d') }}</td>
+                    <td class="px-6 py-4">
+                        {% if opp.deployed_url %}
+                        <a href="{{ opp.deployed_url }}" target="_blank" class="text-blue-400 hover:text-blue-300 text-xs">Visit →</a>
+                        {% elif opp.site_id %}
+                        <a href="/sites/{{ opp.site_id }}" class="text-blue-400 hover:text-blue-300 text-xs">View →</a>
+                        {% else %}
+                        <span class="text-slate-600 text-xs">—</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="7" class="px-6 py-12 text-center text-slate-500">
+                        No opportunities found. Run the discovery agent to find some.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+function sortTable(n) {
+    const table = document.getElementById("opportunitiesTable");
+    let rows, switching, i, x, y, shouldSwitch, dir, switchcount = 0;
+    switching = true;
+    dir = "asc";
+    while (switching) {
+        switching = false;
+        rows = table.rows;
+        for (i = 1; i < (rows.length - 1); i++) {
+            shouldSwitch = false;
+            x = rows[i].getElementsByTagName("TD")[n];
+            y = rows[i + 1].getElementsByTagName("TD")[n];
+            let xContent = x.textContent.toLowerCase();
+            let yContent = y.textContent.toLowerCase();
+            const xNum = parseFloat(xContent);
+            const yNum = parseFloat(yContent);
+            if (!isNaN(xNum) && !isNaN(yNum)) {
+                xContent = xNum;
+                yContent = yNum;
+            }
+            if (dir == "asc") {
+                if (xContent > yContent) { shouldSwitch = true; break; }
+            } else {
+                if (xContent < yContent) { shouldSwitch = true; break; }
+            }
+        }
+        if (shouldSwitch) {
+            rows[i].parentNode.insertBefore(rows[i + 1], rows[i]);
+            switching = true;
+            switchcount++;
+        } else {
+            if (switchcount == 0 && dir == "asc") {
+                dir = "desc";
+                switching = true;
+            }
+        }
+    }
+}
+</script>
+
+{% endblock %}

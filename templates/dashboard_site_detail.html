@@ -1,0 +1,255 @@
+{% extends "dashboard_base.html" %}
+{% block title %}{{ site.name }} - Site Detail{% endblock %}
+{% block content %}
+
+<!-- Breadcrumb -->
+<div class="mb-6 flex items-center gap-2 text-sm">
+    <a href="/sites" class="text-slate-400 hover:text-white transition-colors">Sites</a>
+    <span class="text-slate-600">/</span>
+    <span class="text-white font-medium">{{ site.name }}</span>
+</div>
+
+<!-- Site Header -->
+<div class="mb-8">
+    <div class="flex items-start justify-between flex-wrap gap-4">
+        <div>
+            <h2 class="text-2xl font-bold text-white">{{ site.name }}</h2>
+            <p class="text-slate-400 mt-1">{{ site.niche }}</p>
+        </div>
+        <div class="flex items-center gap-3">
+            <span class="px-3 py-1.5 rounded-full text-sm font-medium {{ status_color(site.status.value) }}">
+                {{ site.status.value }}
+            </span>
+            {% if site.deploy_url %}
+            <a href="{{ site.deploy_url }}" target="_blank" class="px-4 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 text-sm font-medium hover:bg-emerald-500/20 transition-colors">
+                Visit Site →
+            </a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Stats Grid -->
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+    <div class="glass rounded-xl p-5 border border-slate-800">
+        <p class="text-sm text-slate-400">Pages</p>
+        <p class="text-2xl font-bold text-white mt-1">{{ site.page_count }}</p>
+    </div>
+    <div class="glass rounded-xl p-5 border border-slate-800">
+        <p class="text-sm text-slate-400">Avg Daily Traffic</p>
+        <p class="text-2xl font-bold text-white mt-1">{{ "%.0f"|format(site.get_avg_daily_traffic()) }}</p>
+    </div>
+    <div class="glass rounded-xl p-5 border border-slate-800">
+        <p class="text-sm text-slate-400">Created</p>
+        <p class="text-2xl font-bold text-white mt-1">{{ site.created_at.strftime('%b %d') }}</p>
+    </div>
+    <div class="glass rounded-xl p-5 border border-slate-800">
+        <p class="text-sm text-slate-400">Metrics Entries</p>
+        <p class="text-2xl font-bold text-white mt-1">{{ site.metrics_history | length }}</p>
+    </div>
+</div>
+
+<!-- Charts -->
+{% if metrics_chart %}
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+    <div class="glass rounded-xl p-6 border border-slate-800">
+        <h3 class="text-lg font-semibold text-white mb-4">Traffic Over Time</h3>
+        <div class="h-64">
+            <canvas id="trafficChart"></canvas>
+        </div>
+    </div>
+    <div class="glass rounded-xl p-6 border border-slate-800">
+        <h3 class="text-lg font-semibold text-white mb-4">Revenue Over Time</h3>
+        <div class="h-64">
+            <canvas id="revenueChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<div class="glass rounded-xl p-6 border border-slate-800 mb-8">
+    <h3 class="text-lg font-semibold text-white mb-4">SEO Metrics</h3>
+    <div class="h-64">
+        <canvas id="seoChart"></canvas>
+    </div>
+</div>
+{% else %}
+<div class="glass rounded-xl p-12 border border-slate-800 mb-8 text-center">
+    <div class="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center mx-auto mb-4">
+        <svg class="w-8 h-8 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 002 2h2a2 2 0 002-2z"/></svg>
+    </div>
+    <h3 class="text-lg font-medium text-white mb-2">No metrics yet</h3>
+    <p class="text-slate-400 text-sm">Traffic and revenue data will appear here once the Mortician collects metrics.</p>
+</div>
+{% endif %}
+
+<!-- Opportunity Link -->
+{% if opportunity %}
+<div class="glass rounded-xl p-6 border border-slate-800 mb-8">
+    <h3 class="text-lg font-semibold text-white mb-4">Parent Opportunity</h3>
+    <div class="flex items-center justify-between p-4 bg-slate-900/50 rounded-lg">
+        <div>
+            <p class="font-medium text-white">{{ opportunity.niche }}</p>
+            <p class="text-sm text-slate-400 mt-1">Validation Score: {{ "%.1f"|format(opportunity.validation_score) }}</p>
+        </div>
+        <span class="px-2.5 py-1 rounded-full text-xs font-medium {{ status_color(opportunity.status.value) }}">
+            {{ opportunity.status.value }}
+        </span>
+    </div>
+</div>
+{% endif %}
+
+<!-- Technical Details -->
+<div class="glass rounded-xl p-6 border border-slate-800">
+    <h3 class="text-lg font-semibold text-white mb-4">Technical Details</h3>
+    <dl class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+        <div>
+            <dt class="text-slate-500">Site ID</dt>
+            <dd class="text-white font-mono mt-1">{{ site.id }}</dd>
+        </div>
+        <div>
+            <dt class="text-slate-500">Opportunity ID</dt>
+            <dd class="text-white font-mono mt-1">{{ site.opportunity_id or '—' }}</dd>
+        </div>
+        <div>
+            <dt class="text-slate-500">Domain</dt>
+            <dd class="text-white font-mono mt-1">{{ site.domain or '—' }}</dd>
+        </div>
+        <div>
+            <dt class="text-slate-500">Deployed At</dt>
+            <dd class="text-white mt-1">{{ site.deployed_at.strftime('%Y-%m-%d %H:%M') if site.deployed_at else '—' }}</dd>
+        </div>
+        <div>
+            <dt class="text-slate-500">Repository</dt>
+            <dd class="text-white mt-1">
+                {% if site.repo_url %}
+                <a href="{{ site.repo_url }}" target="_blank" class="text-blue-400 hover:text-blue-300">{{ site.repo_url }}</a>
+                {% else %}—{% endif %}
+            </dd>
+        </div>
+        <div>
+            <dt class="text-slate-500">Cloudflare Project</dt>
+            <dd class="text-white font-mono mt-1">{{ site.cloudflare_project_id or '—' }}</dd>
+        </div>
+    </dl>
+</div>
+
+{% if metrics_chart %}
+<script>
+    // Traffic Chart
+    new Chart(document.getElementById('trafficChart'), {
+        type: 'line',
+        data: {
+            labels: {{ metrics_chart.dates | tojson }},
+            datasets: [
+                {
+                    label: 'Organic Users',
+                    data: {{ metrics_chart.organic_users | tojson }},
+                    borderColor: '#10b981',
+                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                    fill: true,
+                    tension: 0.3,
+                },
+                {
+                    label: 'Total Users',
+                    data: {{ metrics_chart.total_users | tojson }},
+                    borderColor: '#3b82f6',
+                    backgroundColor: 'transparent',
+                    tension: 0.3,
+                },
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { labels: { color: '#94a3b8' } } },
+            scales: {
+                y: { ticks: { color: '#64748b' }, grid: { color: '#1e293b' } },
+                x: { ticks: { color: '#64748b' }, grid: { color: '#1e293b' } }
+            }
+        }
+    });
+
+    // Revenue Chart
+    new Chart(document.getElementById('revenueChart'), {
+        type: 'bar',
+        data: {
+            labels: {{ metrics_chart.dates | tojson }},
+            datasets: [
+                {
+                    label: 'Revenue',
+                    data: {{ metrics_chart.revenue | tojson }},
+                    backgroundColor: '#f59e0b',
+                    borderRadius: 4,
+                },
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { ticks: { color: '#64748b', callback: v => '$' + v }, grid: { color: '#1e293b' } },
+                x: { ticks: { color: '#64748b' }, grid: { display: false } }
+            }
+        }
+    });
+
+    // SEO Chart
+    new Chart(document.getElementById('seoChart'), {
+        type: 'line',
+        data: {
+            labels: {{ metrics_chart.dates | tojson }},
+            datasets: [
+                {
+                    label: 'Indexed Pages',
+                    data: {{ metrics_chart.indexed_pages | tojson }},
+                    borderColor: '#8b5cf6',
+                    backgroundColor: 'transparent',
+                    tension: 0.3,
+                    yAxisID: 'y',
+                },
+                {
+                    label: 'Ranking Keywords',
+                    data: {{ metrics_chart.ranking_keywords | tojson }},
+                    borderColor: '#ec4899',
+                    backgroundColor: 'transparent',
+                    tension: 0.3,
+                    yAxisID: 'y',
+                },
+                {
+                    label: 'Avg Position',
+                    data: {{ metrics_chart.avg_position | tojson }},
+                    borderColor: '#06b6d4',
+                    backgroundColor: 'transparent',
+                    tension: 0.3,
+                    yAxisID: 'y1',
+                },
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { labels: { color: '#94a3b8' } } },
+            scales: {
+                y: {
+                    type: 'linear',
+                    display: true,
+                    position: 'left',
+                    ticks: { color: '#64748b' },
+                    grid: { color: '#1e293b' }
+                },
+                y1: {
+                    type: 'linear',
+                    display: true,
+                    position: 'right',
+                    ticks: { color: '#64748b' },
+                    grid: { display: false }
+                },
+                x: { ticks: { color: '#64748b' }, grid: { color: '#1e293b' } }
+            }
+        }
+    });
+</script>
+{% endif %}
+
+{% endblock %}

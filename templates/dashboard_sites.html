@@ -1,0 +1,109 @@
+{% extends "dashboard_base.html" %}
+{% block title %}Sites - Agentic Arbitrage Factory{% endblock %}
+{% block content %}
+
+<div class="mb-8">
+    <h2 class="text-2xl font-bold text-white">Sites</h2>
+    <p class="text-slate-400 mt-1">All deployed and managed SEO sites</p>
+</div>
+
+<div class="glass rounded-xl border border-slate-800 overflow-hidden">
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm text-left" id="sitesTable">
+            <thead class="text-xs text-slate-400 uppercase bg-slate-900/50">
+                <tr>
+                    <th class="px-6 py-4 cursor-pointer hover:text-white" onclick="sortTable(0)">Name ↕</th>
+                    <th class="px-6 py-4 cursor-pointer hover:text-white" onclick="sortTable(1)">Status ↕</th>
+                    <th class="px-6 py-4 cursor-pointer hover:text-white" onclick="sortTable(2)">Niche ↕</th>
+                    <th class="px-6 py-4 cursor-pointer hover:text-white text-right" onclick="sortTable(3)">Pages ↕</th>
+                    <th class="px-6 py-4 cursor-pointer hover:text-white text-right" onclick="sortTable(4)">Avg Traffic ↕</th>
+                    <th class="px-6 py-4 cursor-pointer hover:text-white text-right" onclick="sortTable(5)">Revenue ↕</th>
+                    <th class="px-6 py-4">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800">
+                {% for site in sites %}
+                {% set latest_metrics = site.get_latest_metrics() %}
+                <tr class="hover:bg-slate-800/30 transition-colors">
+                    <td class="px-6 py-4 font-medium text-white">
+                        <a href="/sites/{{ site.id }}" class="hover:text-blue-400 transition-colors">{{ site.name }}</a>
+                    </td>
+                    <td class="px-6 py-4">
+                        <span class="px-2.5 py-1 rounded-full text-xs font-medium {{ status_color(site.status.value) }}">
+                            {{ site.status.value }}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 text-slate-300">{{ site.niche }}</td>
+                    <td class="px-6 py-4 text-right text-slate-300">{{ site.page_count }}</td>
+                    <td class="px-6 py-4 text-right text-slate-300">
+                        {{ "%.0f"|format(site.get_avg_daily_traffic()) }}/day
+                    </td>
+                    <td class="px-6 py-4 text-right text-slate-300">
+                        {% if latest_metrics %}${{ "%.2f"|format(latest_metrics.revenue) }}{% else %}$0.00{% endif %}
+                    </td>
+                    <td class="px-6 py-4">
+                        <div class="flex gap-2">
+                            <a href="/sites/{{ site.id }}" class="text-blue-400 hover:text-blue-300 text-xs">Details</a>
+                            {% if site.deploy_url %}
+                            <a href="{{ site.deploy_url }}" target="_blank" class="text-emerald-400 hover:text-emerald-300 text-xs">Live →</a>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="7" class="px-6 py-12 text-center text-slate-500">
+                        No sites found. Validate opportunities to build sites.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+function sortTable(n) {
+    const table = document.getElementById("sitesTable");
+    let rows, switching, i, x, y, shouldSwitch, dir, switchcount = 0;
+    switching = true;
+    dir = "asc";
+    while (switching) {
+        switching = false;
+        rows = table.rows;
+        for (i = 1; i < (rows.length - 1); i++) {
+            shouldSwitch = false;
+            x = rows[i].getElementsByTagName("TD")[n];
+            y = rows[i + 1].getElementsByTagName("TD")[n];
+            let xContent = x.textContent.toLowerCase().replace(/[^\d.-]/g, '');
+            let yContent = y.textContent.toLowerCase().replace(/[^\d.-]/g, '');
+            const xNum = parseFloat(xContent);
+            const yNum = parseFloat(yContent);
+            if (!isNaN(xNum) && !isNaN(yNum) && xContent !== '') {
+                xContent = xNum;
+                yContent = yNum;
+            } else {
+                xContent = x.textContent.toLowerCase();
+                yContent = y.textContent.toLowerCase();
+            }
+            if (dir == "asc") {
+                if (xContent > yContent) { shouldSwitch = true; break; }
+            } else {
+                if (xContent < yContent) { shouldSwitch = true; break; }
+            }
+        }
+        if (shouldSwitch) {
+            rows[i].parentNode.insertBefore(rows[i + 1], rows[i]);
+            switching = true;
+            switchcount++;
+        } else {
+            if (switchcount == 0 && dir == "asc") {
+                dir = "desc";
+                switching = true;
+            }
+        }
+    }
+}
+</script>
+
+{% endblock %}
